@@ -113,41 +113,37 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 					handleInput: (data) => {
 						const currentItem = itemAt(selectionIndex, mainItems, chatItems);
 						const isInlineInputActive = !!currentItem?.isOther;
-						const kb = getKeybindings();
-
-						if (kb.matches(data, KEYBIND_UP)) {
-							if (isInlineInputActive) mainList.clearInputBuffer();
-							selectionIndex = wrapIndex(selectionIndex - 1, totalCount);
-							applySelection();
-							tui.requestRender();
-							return;
-						}
-						if (kb.matches(data, KEYBIND_DOWN)) {
-							if (isInlineInputActive) mainList.clearInputBuffer();
-							selectionIndex = wrapIndex(selectionIndex + 1, totalCount);
-							applySelection();
-							tui.requestRender();
-							return;
-						}
-						if (kb.matches(data, KEYBIND_CONFIRM)) {
-							if (isInlineInputActive) {
-								done({ label: mainList.getInputBuffer(), isOther: true });
-							} else if (currentItem) {
-								done(currentItem);
-							}
-							return;
-						}
-						if (kb.matches(data, KEYBIND_CANCEL)) {
-							done(null);
-							return;
-						}
-						if (isInlineInputActive) {
-							if (BACKSPACE_CHARS.has(data)) {
+						const action = dispatchQuestionInput(data, {
+							selectionIndex,
+							totalCount,
+							currentItem,
+							isInlineInputActive,
+							inputBuffer: mainList.getInputBuffer(),
+							keybindings: getKeybindings(),
+						});
+						switch (action.kind) {
+							case "nav":
+								if (isInlineInputActive) mainList.clearInputBuffer();
+								selectionIndex = action.nextIndex;
+								applySelection();
+								tui.requestRender();
+								return;
+							case "confirm":
+								done(action.choice);
+								return;
+							case "cancel":
+								done(null);
+								return;
+							case "backspace":
 								mainList.backspaceInput();
-							} else if (data && !data.startsWith(ESC_SEQUENCE_PREFIX)) {
-								mainList.appendInput(data);
-							}
-							tui.requestRender();
+								tui.requestRender();
+								return;
+							case "append":
+								mainList.appendInput(action.data);
+								tui.requestRender();
+								return;
+							case "ignore":
+								return;
 						}
 					},
 				};
@@ -177,7 +173,55 @@ export function wrapIndex(index: number, total: number): number {
 	return ((index % total) + total) % total;
 }
 
-function buildDialogContainer(
+export type QuestionInputAction =
+	| { kind: "nav"; nextIndex: number }
+	| { kind: "confirm"; choice: WrappingSelectItem }
+	| { kind: "cancel" }
+	| { kind: "backspace" }
+	| { kind: "append"; data: string }
+	| { kind: "ignore" };
+
+export interface DispatchState {
+	selectionIndex: number;
+	totalCount: number;
+	currentItem: WrappingSelectItem | undefined;
+	isInlineInputActive: boolean;
+	inputBuffer: string;
+	keybindings: { matches(data: string, name: string): boolean };
+}
+
+export function dispatchQuestionInput(data: string, state: DispatchState): QuestionInputAction {
+	const { keybindings: kb } = state;
+	if (kb.matches(data, KEYBIND_UP)) {
+		return { kind: "nav", nextIndex: wrapIndex(state.selectionIndex - 1, state.totalCount) };
+	}
+	if (kb.matches(data, KEYBIND_DOWN)) {
+		return { kind: "nav", nextIndex: wrapIndex(state.selectionIndex + 1, state.totalCount) };
+	}
+	if (kb.matches(data, KEYBIND_CONFIRM)) {
+		if (state.isInlineInputActive) {
+			return { kind: "confirm", choice: { label: state.inputBuffer, isOther: true } };
+		}
+		if (state.currentItem) {
+			return { kind: "confirm", choice: state.currentItem };
+		}
+		return { kind: "ignore" };
+	}
+	if (kb.matches(data, KEYBIND_CANCEL)) {
+		return { kind: "cancel" };
+	}
+	if (state.isInlineInputActive) {
+		if (BACKSPACE_CHARS.has(data)) {
+			return { kind: "backspace" };
+		}
+		if (data && !data.startsWith(ESC_SEQUENCE_PREFIX)) {
+			return { kind: "append", data };
+		}
+	}
+	return { kind: "ignore" };
+}
+
+export function buildDialogContainer(
 	theme: Theme,
 	params: QuestionParams,
 	mainList: WrappingSelect,
