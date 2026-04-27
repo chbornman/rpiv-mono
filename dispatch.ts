@@ -20,6 +20,8 @@ export type QuestionnaireAction =
 	| { kind: "notes_enter" }
 	| { kind: "notes_exit" }
 	| { kind: "submit" }
+	| { kind: "focus_chat" }
+	| { kind: "focus_options" }
 	| { kind: "ignore" };
 
 export interface QuestionnaireKeybindings {
@@ -31,6 +33,7 @@ export interface QuestionnaireDispatchState {
 	optionIndex: number;
 	inputMode: boolean;
 	notesMode: boolean;
+	chatFocused: boolean;
 	answers: ReadonlyMap<number, QuestionAnswer>;
 	multiSelectIndices: ReadonlySet<number>;
 	questions: readonly QuestionData[];
@@ -68,6 +71,19 @@ function buildSingleSelectAnswer(state: QuestionnaireDispatchState): QuestionAns
 	const q = state.questions[state.currentTab];
 	if (!q) return null;
 
+	// Chat sentinel takes priority over inputMode: when chatFocused=true, the host overrides
+	// currentItem() to return the chat sentinel even if inputMode is still true (e.g. user
+	// navigated from "Type something." and DOWN focused the chat row).
+	const item = state.currentItem;
+	if (item?.isChat) {
+		return {
+			questionIndex: state.currentTab,
+			question: q.question,
+			answer: item.label,
+			wasChat: true,
+		};
+	}
+
 	if (state.inputMode) {
 		const label = state.inputBuffer;
 		return {
@@ -77,16 +93,7 @@ function buildSingleSelectAnswer(state: QuestionnaireDispatchState): QuestionAns
 			wasCustom: true,
 		};
 	}
-	const item = state.currentItem;
 	if (!item) return null;
-	if (item.isChat) {
-		return {
-			questionIndex: state.currentTab,
-			question: q.question,
-			answer: item.label,
-			wasChat: true,
-		};
-	}
 	if (item.isOther) {
 		return null;
 	}
@@ -123,12 +130,35 @@ function tabSwitchAction(data: string, state: QuestionnaireDispatchState): Quest
 	return null;
 }
 
+// DOWN navigation helper shared by inputMode and normal nav branches.
+// Emits focus_chat at the boundary (last item) so the host can transfer focus to the chat row
+// without mutating optionIndex — UP-from-chat then restores prior selection.
+function nextNavOnDown(state: QuestionnaireDispatchState): QuestionnaireAction {
+	if (state.items.length > 0 && state.optionIndex === state.items.length - 1) {
+		return { kind: "focus_chat" };
+	}
+	return { kind: "nav", nextIndex: wrapTab(state.optionIndex + 1, Math.max(1, state.items.length)) };
+}
+
 export function handleQuestionnaireInput(data: string, state: QuestionnaireDispatchState): QuestionnaireAction {
 	const kb = state.keybindings;
 
 	if (state.notesMode) {
 		if (kb.matches(data, KEYBIND_CANCEL)) return { kind: "notes_exit" };
 		if (kb.matches(data, KEYBIND_CONFIRM)) return { kind: "notes_exit" };
+		return { kind: "ignore" };
+	}
+
+	if (state.chatFocused) {
+		if (kb.matches(data, KEYBIND_CANCEL)) return { kind: "cancel" };
+		if (kb.matches(data, KEYBIND_CONFIRM)) {
+			const answer = buildSingleSelectAnswer(state);
+			if (!answer) return { kind: "ignore" };
+			return { kind: "confirm", answer, autoAdvanceTab: computeAutoAdvanceTab(state) };
+		}
+		if (kb.matches(data, KEYBIND_UP)) return { kind: "focus_options" };
+		const tab = tabSwitchAction(data, state);
+		if (tab) return tab;
 		return { kind: "ignore" };
 	}
 
@@ -143,7 +173,7 @@ export function handleQuestionnaireInput(data: string, state: QuestionnaireDispa
 			return { kind: "nav", nextIndex: wrapTab(state.optionIndex - 1, Math.max(1, state.items.length)) };
 		}
 		if (kb.matches(data, KEYBIND_DOWN)) {
-			return { kind: "nav", nextIndex: wrapTab(state.optionIndex + 1, Math.max(1, state.items.length)) };
+			return nextNavOnDown(state);
 		}
 		return { kind: "ignore" };
 	}
@@ -172,7 +202,7 @@ export function handleQuestionnaireInput(data: string, state: QuestionnaireDispa
 		return { kind: "nav", nextIndex: wrapTab(state.optionIndex - 1, Math.max(1, state.items.length)) };
 	}
 	if (kb.matches(data, KEYBIND_DOWN)) {
-		return { kind: "nav", nextIndex: wrapTab(state.optionIndex + 1, Math.max(1, state.items.length)) };
+		return nextNavOnDown(state);
 	}
 
 	if (q.multiSelect) {

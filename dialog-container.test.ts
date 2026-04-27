@@ -15,10 +15,11 @@ import {
 	SUBMIT_HINT_READY,
 	SUBMIT_READY,
 } from "./dialog-builder.js";
+import { MultiSelectOptions } from "./multi-select-options.js";
 import type { PreviewPane } from "./preview-pane.js";
 import type { TabBar } from "./tab-bar.js";
 import type { QuestionAnswer, QuestionData } from "./types.js";
-import type { WrappingSelect } from "./wrapping-select.js";
+import { WrappingSelect } from "./wrapping-select.js";
 
 const theme = makeTheme() as unknown as Theme;
 
@@ -54,6 +55,9 @@ function makeConfig(over: Partial<DialogConfig> = {}): DialogConfig {
 		notesInput: over.notesInput ?? (stubComponent(["<NOTES_INPUT>"]) as unknown as Input),
 		chatList: over.chatList ?? (stubComponent(["<CHAT_ROW>"]) as unknown as WrappingSelect),
 		isMulti: over.isMulti ?? questions.length > 1,
+		multiSelectOptionsByTab:
+			over.multiSelectOptionsByTab ?? questions.map(() => undefined as MultiSelectOptions | undefined),
+		getBodyHeight: over.getBodyHeight ?? (() => 1),
 	};
 }
 
@@ -86,12 +90,26 @@ describe("buildDialog — multi-question (question tab)", () => {
 	});
 
 	it("appends 'Space toggle' suffix when current question is multiSelect", () => {
+		const multiQ: QuestionData = {
+			question: "areas?",
+			multiSelect: true,
+			options: [{ label: "FE" }, { label: "BE" }],
+		};
+		const initialState: DialogState = {
+			currentTab: 0,
+			optionIndex: 0,
+			notesVisible: false,
+			inputMode: false,
+			answers: new Map(),
+			multiSelectChecked: new Set(),
+		};
+		const mso = new MultiSelectOptions(theme, multiQ, initialState);
 		const dlg = buildDialog(
 			makeConfig({
-				questions: [
-					{ question: "areas?", multiSelect: true, options: [{ label: "FE" }, { label: "BE" }] },
-					{ question: "second?", options: [{ label: "x" }] },
-				],
+				questions: [multiQ, { question: "second?", options: [{ label: "x" }] }],
+				state: initialState,
+				multiSelectOptionsByTab: [mso, undefined],
+				getBodyHeight: () => 4,
 			}),
 		);
 		const joined = dlg.render(120).join("\n");
@@ -135,20 +153,26 @@ describe("buildDialog — multi-question (question tab)", () => {
 	});
 
 	it("renders multiSelect checkboxes inline (☑ / ☐) in place of PreviewPane", () => {
+		const multiQ: QuestionData = {
+			question: "areas?",
+			multiSelect: true,
+			options: [{ label: "FE" }, { label: "BE" }],
+		};
+		const state: DialogState = {
+			currentTab: 0,
+			optionIndex: 1,
+			notesVisible: false,
+			inputMode: false,
+			answers: new Map(),
+			multiSelectChecked: new Set([0]),
+		};
+		const mso = new MultiSelectOptions(theme, multiQ, state);
 		const dlg = buildDialog(
 			makeConfig({
-				questions: [
-					{ question: "areas?", multiSelect: true, options: [{ label: "FE" }, { label: "BE" }] },
-					{ question: "q?", options: [{ label: "a" }] },
-				],
-				state: {
-					currentTab: 0,
-					optionIndex: 1,
-					notesVisible: false,
-					inputMode: false,
-					answers: new Map(),
-					multiSelectChecked: new Set([0]),
-				},
+				questions: [multiQ, { question: "q?", options: [{ label: "a" }] }],
+				state,
+				multiSelectOptionsByTab: [mso, undefined],
+				getBodyHeight: () => 4,
 			}),
 		);
 		const joined = dlg.render(80).join("\n");
@@ -236,5 +260,64 @@ describe("buildDialog — width safety", () => {
 				for (const line of dlg.render(w)) expect(visibleWidth(line)).toBeLessThanOrEqual(w);
 			}
 		}
+	});
+});
+
+describe("buildDialog — FixedHeightBox body wrapping", () => {
+	it("body wrapped in FixedHeightBox produces getBodyHeight() lines (delta = expected delta)", () => {
+		const a = buildDialog(makeConfig({ getBodyHeight: () => 5 })).render(80);
+		const b = buildDialog(makeConfig({ getBodyHeight: () => 20 })).render(80);
+		expect(b.length - a.length).toBe(15);
+	});
+
+	it("dialog total line count is identical across tab switches with mixed single/multi fixture", () => {
+		// Both questions have headers (symmetric header block) and we render at width 120 so neither
+		// hint string wraps (HINT_MULTI ~56 chars; HINT_MULTI + HINT_MULTISELECT_SUFFIX ~87 chars).
+		const multiQ: QuestionData = {
+			question: "areas?",
+			header: "H2",
+			multiSelect: true,
+			options: [{ label: "FE" }, { label: "BE" }, { label: "DB" }, { label: "QA" }, { label: "Ops" }],
+		};
+		const singleQ: QuestionData = { question: "Q1", header: "H1", options: [{ label: "A" }, { label: "B" }] };
+		const questions: QuestionData[] = [singleQ, multiQ];
+		const stateTab0: DialogState = {
+			currentTab: 0,
+			optionIndex: 0,
+			notesVisible: false,
+			inputMode: false,
+			answers: new Map(),
+			multiSelectChecked: new Set(),
+		};
+		const stateTab1: DialogState = { ...stateTab0, currentTab: 1 };
+		const mso = new MultiSelectOptions(theme, multiQ, stateTab0);
+		const multiSelectOptionsByTab: ReadonlyArray<MultiSelectOptions | undefined> = [undefined, mso];
+		const getBodyHeight = (_w: number) => 7;
+
+		const dlgTab0 = buildDialog(makeConfig({ questions, state: stateTab0, multiSelectOptionsByTab, getBodyHeight }));
+		const dlgTab1 = buildDialog(makeConfig({ questions, state: stateTab1, multiSelectOptionsByTab, getBodyHeight }));
+		expect(dlgTab0.render(120).length).toBe(dlgTab1.render(120).length);
+	});
+});
+
+describe("buildDialog — chatList focus visual", () => {
+	it("chatList shows active ❯ pointer when setFocused(true); inactive when setFocused(false)", () => {
+		const chatList = new WrappingSelect([{ label: "Chat about this", isChat: true }], 1, {
+			selectedText: (t) => t,
+			description: (t) => t,
+			scrollInfo: (t) => t,
+		});
+
+		chatList.setFocused(true);
+		const focused = buildDialog(makeConfig({ chatList })).render(80);
+		const focusedChatLine = focused.find((l) => l.includes("Chat about this"));
+		expect(focusedChatLine).toBeDefined();
+		expect(focusedChatLine?.includes("❯ ")).toBe(true);
+
+		chatList.setFocused(false);
+		const blurred = buildDialog(makeConfig({ chatList })).render(80);
+		const blurredChatLine = blurred.find((l) => l.includes("Chat about this"));
+		expect(blurredChatLine).toBeDefined();
+		expect(blurredChatLine?.includes("❯ ")).toBe(false);
 	});
 });

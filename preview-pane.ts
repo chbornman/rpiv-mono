@@ -100,7 +100,7 @@ export class PreviewPane implements Component {
 
 		if (sideBySide) {
 			const preview: Component = {
-				render: (w) => this.renderPreviewLines(w),
+				render: (w) => this.renderCenteredPreviewLines(w),
 				handleInput: () => {},
 				invalidate: () => this.invalidateCache(),
 			};
@@ -117,6 +117,18 @@ export class PreviewPane implements Component {
 		return [...this.options.render(width), ...this.renderPreviewLines(width)];
 	}
 
+	naturalHeight(width: number): number {
+		if (this.question.multiSelect === true) {
+			return this.options.render(width).length;
+		}
+		const sideBySide = this.getTerminalWidth() >= PREVIEW_MIN_WIDTH && width >= PREVIEW_MIN_WIDTH;
+		const optionsHeight = this.options.render(width).length;
+		if (sideBySide) {
+			return Math.max(optionsHeight, MAX_PREVIEW_HEIGHT);
+		}
+		return optionsHeight + MAX_PREVIEW_HEIGHT;
+	}
+
 	private renderPreviewLines(width: number): string[] {
 		if (this.cachedWidth !== width) {
 			for (const md of this.markdownCache.values()) md.invalidate();
@@ -128,6 +140,25 @@ export class PreviewPane implements Component {
 		const trimmed = clamped.length > MAX_PREVIEW_HEIGHT ? clamped.slice(0, MAX_PREVIEW_HEIGHT) : clamped;
 		while (trimmed.length < MAX_PREVIEW_HEIGHT) trimmed.push("");
 		return trimmed;
+	}
+
+	private renderCenteredPreviewLines(width: number): string[] {
+		return this.centerHorizontally(this.renderPreviewLines(width), width);
+	}
+
+	private centerHorizontally(lines: string[], colWidth: number): string[] {
+		if (lines.length === 0 || colWidth <= 0) return lines;
+		// Strip trailing whitespace so Markdown's right-pad-to-width doesn't inflate measured contentWidth.
+		const stripped = lines.map((l) => l.replace(/[\s\u00A0]+$/, ""));
+		let contentWidth = 0;
+		for (const l of stripped) {
+			const w = visibleWidth(l);
+			if (w > contentWidth) contentWidth = w;
+		}
+		const leftMargin = Math.max(0, Math.floor((colWidth - contentWidth) / 2));
+		if (leftMargin === 0) return lines; // no-op when content already fills the column
+		const margin = " ".repeat(leftMargin);
+		return stripped.map((line) => (line === "" ? "" : margin + line));
 	}
 
 	private computePreviewBody(width: number): string[] {

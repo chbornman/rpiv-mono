@@ -44,6 +44,7 @@ function baseState(over: Partial<QuestionnaireDispatchState> = {}): Questionnair
 		optionIndex: over.optionIndex ?? 0,
 		inputMode: over.inputMode ?? false,
 		notesMode: over.notesMode ?? false,
+		chatFocused: over.chatFocused ?? false,
 		answers: over.answers ?? new Map<number, QuestionAnswer>(),
 		multiSelectIndices: over.multiSelectIndices ?? new Set<number>(),
 		questions,
@@ -284,5 +285,120 @@ describe("handleQuestionnaireInput — inputMode (Type something)", () => {
 		expect(
 			handleQuestionnaireInput(sentinel(KEY.CANCEL), baseState({ inputMode: true, currentItem: other })),
 		).toEqual({ kind: "cancel" });
+	});
+});
+
+describe("handleQuestionnaireInput — chat focus", () => {
+	const chatItem: WrappingSelectItem = { label: "Chat about this", isChat: true };
+
+	it("DOWN-on-last single-select → focus_chat (no optionIndex mutation)", () => {
+		const s = baseState({ optionIndex: 2 }); // items.length === 3
+		expect(handleQuestionnaireInput(sentinel(KEY.DOWN), s)).toEqual({ kind: "focus_chat" });
+	});
+
+	it("DOWN-on-last multi-select → focus_chat", () => {
+		const multiQ = makeQuestion({
+			multiSelect: true,
+			options: [{ label: "FE" }, { label: "BE" }, { label: "DB" }],
+		});
+		const items = multiQ.options.map((o) => ({ label: o.label }));
+		const s = baseState({
+			questions: [multiQ],
+			isMulti: false,
+			optionIndex: 2,
+			items,
+			currentItem: items[2],
+		});
+		expect(handleQuestionnaireInput(sentinel(KEY.DOWN), s)).toEqual({ kind: "focus_chat" });
+	});
+
+	it("DOWN-on-last + inputMode (last item is isOther) → focus_chat", () => {
+		const other: WrappingSelectItem = { label: "Type something.", isOther: true };
+		const items: WrappingSelectItem[] = [{ label: "A" }, { label: "B" }, other];
+		const s = baseState({
+			inputMode: true,
+			items,
+			optionIndex: 2,
+			currentItem: other,
+		});
+		expect(handleQuestionnaireInput(sentinel(KEY.DOWN), s)).toEqual({ kind: "focus_chat" });
+	});
+
+	it("UP while chatFocused → focus_options", () => {
+		const s = baseState({ chatFocused: true, optionIndex: 1, currentItem: chatItem });
+		expect(handleQuestionnaireInput(sentinel(KEY.UP), s)).toEqual({ kind: "focus_options" });
+	});
+
+	it("UP-on-first (chatFocused: false) still wraps to last item (regression)", () => {
+		const s = baseState({ optionIndex: 0 });
+		expect(handleQuestionnaireInput(sentinel(KEY.UP), s)).toEqual({
+			kind: "nav",
+			nextIndex: s.items.length - 1,
+		});
+	});
+
+	it("DOWN while chatFocused → ignore", () => {
+		const s = baseState({ chatFocused: true, currentItem: chatItem });
+		expect(handleQuestionnaireInput(sentinel(KEY.DOWN), s)).toEqual({ kind: "ignore" });
+	});
+
+	it.each<[string, string, number]>([
+		["Tab", BYTE_TAB, 1],
+		["Right", BYTE_RIGHT, 1],
+		["Shift+Tab", BYTE_SHIFT_TAB, 2],
+		["Left", BYTE_LEFT, 2],
+	])("%s while chatFocused → tab_switch → tab %i", (_label, byte, expected) => {
+		const s = baseState({ chatFocused: true, currentItem: chatItem });
+		expect(handleQuestionnaireInput(byte, s)).toEqual({ kind: "tab_switch", nextTab: expected });
+	});
+
+	it("Enter while chatFocused single-select → confirm wasChat:true", () => {
+		const s = baseState({ chatFocused: true, currentItem: chatItem });
+		const action = handleQuestionnaireInput(sentinel(KEY.CONFIRM), s);
+		expect(action.kind).toBe("confirm");
+		if (action.kind === "confirm") {
+			expect(action.answer.wasChat).toBe(true);
+			expect(action.answer.answer).toBe("Chat about this");
+		}
+	});
+
+	it("Enter while chatFocused multi-select → confirm wasChat:true (overrides multi_confirm)", () => {
+		const multiQ = makeQuestion({ multiSelect: true });
+		const s = baseState({
+			questions: [multiQ, makeQuestion()],
+			currentTab: 0,
+			chatFocused: true,
+			currentItem: chatItem,
+			multiSelectIndices: new Set([0, 1]),
+		});
+		const action = handleQuestionnaireInput(sentinel(KEY.CONFIRM), s);
+		expect(action.kind).toBe("confirm");
+		if (action.kind === "confirm") {
+			expect(action.answer.wasChat).toBe(true);
+		}
+	});
+
+	it("Esc while chatFocused → cancel", () => {
+		const s = baseState({ chatFocused: true, currentItem: chatItem });
+		expect(handleQuestionnaireInput(sentinel(KEY.CANCEL), s)).toEqual({ kind: "cancel" });
+	});
+
+	it("Space while chatFocused (multi) → ignore", () => {
+		const multiQ = makeQuestion({ multiSelect: true });
+		const s = baseState({
+			questions: [multiQ, makeQuestion()],
+			chatFocused: true,
+			currentItem: chatItem,
+		});
+		expect(handleQuestionnaireInput(BYTE_SPACE, s)).toEqual({ kind: "ignore" });
+	});
+
+	it("'n' while chatFocused → ignore", () => {
+		const s = baseState({
+			chatFocused: true,
+			currentItem: chatItem,
+			answers: new Map([[0, makeAnswer({ questionIndex: 0 })]]),
+		});
+		expect(handleQuestionnaireInput("n", s)).toEqual({ kind: "ignore" });
 	});
 });

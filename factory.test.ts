@@ -48,6 +48,18 @@ const params = {
 	],
 };
 
+const mixedParams = {
+	questions: [
+		{ question: "Q1", header: "H1", options: [{ label: "A" }, { label: "B" }] },
+		{
+			question: "Q2",
+			header: "H2",
+			multiSelect: true,
+			options: [{ label: "FE" }, { label: "BE" }, { label: "DB" }, { label: "QA" }, { label: "Ops" }],
+		},
+	],
+};
+
 beforeEach(() => {});
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -106,5 +118,65 @@ describe("ask_user_question — factory driver (real pi-tui keybindings)", () =>
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
 		await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
+	});
+});
+
+describe("ask_user_question — chat focus integration", () => {
+	it("DOWN past last option focuses chat row; ENTER returns wasChat:true", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			// items = [A, B, "Type something."] (3 items, last index = 2)
+			c.handleInput("\u001b[B"); // optionIndex 0 → 1 (B)
+			c.handleInput("\u001b[B"); // optionIndex 1 → 2 (Type something, inputMode=true)
+			c.handleInput("\u001b[B"); // DOWN-on-last + inputMode → focus_chat
+			c.handleInput("\r"); // ENTER while chatFocused → confirm with wasChat:true
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
+		const details = r?.details as {
+			cancelled: boolean;
+			answers: Array<{ wasChat?: boolean; answer?: string | null }>;
+		};
+		expect(details.cancelled).toBe(false);
+		expect(details.answers[0]?.wasChat).toBe(true);
+		expect(details.answers[0]?.answer).toBe("Chat about this");
+	});
+
+	it("UP-from-chat clears chatFocused; subsequent ENTER returns options answer (not wasChat)", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput("\u001b[B"); // → 1 (B)
+			c.handleInput("\u001b[B"); // → 2 (Type something, inputMode=true)
+			c.handleInput("\u001b[B"); // → focus_chat
+			c.handleInput("\u001b[A"); // UP → focus_options (chatFocused=false; optionIndex/inputMode unchanged)
+			c.handleInput("\r"); // ENTER → confirm via inputMode branch with empty buffer
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
+		const details = r?.details as {
+			cancelled: boolean;
+			answers: Array<{ wasChat?: boolean; wasCustom?: boolean; answer?: string | null }>;
+		};
+		expect(details.cancelled).toBe(false);
+		expect(details.answers[0]?.wasChat).not.toBe(true);
+		expect(details.answers[0]?.wasCustom).toBe(true);
+		expect(details.answers[0]?.answer).toBeNull();
+	});
+
+	it("dialog total line count is identical across tab switches (mixed single+multi fixture)", async () => {
+		const tool = register();
+		let lengthTab0 = 0;
+		let lengthTab1 = 0;
+		// Render at 120 so the multiSelect hint suffix doesn't wrap — the FixedHeightBox body
+		// stabilization is the property under test, not hint-wrap symmetry.
+		const { custom } = driveCustom((c, done) => {
+			lengthTab0 = c.render(120).length;
+			c.handleInput("\t"); // Tab → next question tab
+			lengthTab1 = c.render(120).length;
+			done({ answers: [], cancelled: true });
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		await tool.execute?.("tc", mixedParams as never, undefined as never, undefined as never, ctx);
+		expect(lengthTab0).toBe(lengthTab1);
 	});
 });

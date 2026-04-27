@@ -1,13 +1,7 @@
 import { DynamicBorder, type Theme } from "@mariozechner/pi-coding-agent";
-import {
-	type Component,
-	Container,
-	type Input,
-	Spacer,
-	Text,
-	truncateToWidth,
-	visibleWidth,
-} from "@mariozechner/pi-tui";
+import { type Component, Container, type Input, Spacer, Text } from "@mariozechner/pi-tui";
+import { FixedHeightBox } from "./fixed-height-box.js";
+import type { MultiSelectOptions } from "./multi-select-options.js";
 import type { PreviewPane } from "./preview-pane.js";
 import type { TabBar } from "./tab-bar.js";
 import type { QuestionAnswer, QuestionData } from "./types.js";
@@ -20,10 +14,6 @@ export const HINT_NOTES_SUFFIX = " · n for notes";
 export const SUBMIT_READY = "Ready to submit";
 export const SUBMIT_HINT_READY = "Enter submit · Esc cancel";
 export const SUBMIT_HINT_INCOMPLETE_PREFIX = "Answer remaining questions before submitting:";
-export const CHECKED = "☑";
-export const UNCHECKED = "☐";
-export const ACTIVE_POINTER = "❯ ";
-export const INACTIVE_POINTER = "  ";
 
 export interface DialogState {
 	currentTab: number;
@@ -43,6 +33,8 @@ export interface DialogConfig {
 	notesInput: Input;
 	chatList: WrappingSelect;
 	isMulti: boolean;
+	multiSelectOptionsByTab: ReadonlyArray<MultiSelectOptions | undefined>;
+	getBodyHeight: (width: number) => number;
 }
 
 export interface DialogComponent extends Component {
@@ -142,10 +134,12 @@ function buildQuestionContainer(config: DialogConfig): Container {
 		container.addChild(new Spacer(1));
 	}
 
-	if (question?.multiSelect === true) {
-		container.addChild(new MultiSelectOptions(theme, question, state));
+	const mso = config.multiSelectOptionsByTab[state.currentTab];
+	if (question?.multiSelect === true && mso) {
+		mso.setState(state);
+		container.addChild(new FixedHeightBox(mso, config.getBodyHeight));
 	} else {
-		container.addChild(previewPane);
+		container.addChild(new FixedHeightBox(previewPane, config.getBodyHeight));
 	}
 	container.addChild(new Spacer(1));
 
@@ -177,36 +171,4 @@ function formatAnswerForSummary(a: QuestionAnswer): string {
 	if (a.selected && a.selected.length > 0) return a.selected.join(", ");
 	if (a.wasCustom) return a.answer ?? "(no input)";
 	return a.answer ?? "(no answer)";
-}
-
-class MultiSelectOptions implements Component {
-	constructor(
-		private readonly theme: Theme,
-		private readonly question: QuestionData,
-		private readonly state: DialogState,
-	) {}
-	handleInput(): void {}
-	invalidate(): void {}
-	render(width: number): string[] {
-		const lines: string[] = [];
-		for (let i = 0; i < this.question.options.length; i++) {
-			const opt = this.question.options[i];
-			if (!opt) continue;
-			const checked = this.state.multiSelectChecked.has(i);
-			const active = i === this.state.optionIndex;
-			const pointer = active ? ACTIVE_POINTER : INACTIVE_POINTER;
-			const box = checked ? this.theme.fg("success", CHECKED) : this.theme.fg("muted", UNCHECKED);
-			const rawPrefix = `${pointer}${checked ? CHECKED : UNCHECKED} `;
-			const contentWidth = Math.max(1, width - visibleWidth(rawPrefix));
-			const label = truncateToWidth(opt.label, contentWidth, "…");
-			const styledLabel = active ? this.theme.fg("accent", this.theme.bold(label)) : label;
-			lines.push(truncateToWidth(`${pointer}${box} ${styledLabel}`, width, ""));
-			if (opt.description) {
-				const pad = " ".repeat(visibleWidth(rawPrefix));
-				const desc = truncateToWidth(this.theme.fg("muted", opt.description), Math.max(1, width - pad.length), "…");
-				lines.push(pad + desc);
-			}
-		}
-		return lines;
-	}
 }

@@ -2,6 +2,7 @@ import { type ExtensionAPI, getMarkdownTheme } from "@mariozechner/pi-coding-age
 import { getKeybindings, Input } from "@mariozechner/pi-tui";
 import { buildDialog, type DialogState } from "./dialog-builder.js";
 import { handleQuestionnaireInput, type QuestionnaireDispatchState } from "./dispatch.js";
+import { MultiSelectOptions } from "./multi-select-options.js";
 import { PreviewPane } from "./preview-pane.js";
 import { TabBar } from "./tab-bar.js";
 import {
@@ -94,6 +95,18 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 						}),
 				);
 
+				const initialDialogState: DialogState = {
+					currentTab: 0,
+					optionIndex: 0,
+					notesVisible: false,
+					inputMode: false,
+					answers: new Map(),
+					multiSelectChecked: new Set(),
+				};
+				const multiSelectOptionsByTab: ReadonlyArray<MultiSelectOptions | undefined> = questions.map((q) =>
+					q.multiSelect ? new MultiSelectOptions(theme, q, initialDialogState) : undefined,
+				);
+
 				const tabBar: TabBar | undefined = isMulti
 					? new TabBar(
 							{
@@ -110,11 +123,13 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 				let optionIndex = 0;
 				let inputMode = false;
 				let notesMode = false;
+				let chatFocused = false;
 				const answers = new Map<number, QuestionAnswer>();
 				let multiSelectChecked = new Set<number>();
 
 				const items = (): WrappingSelectItem[] => itemsByTab[currentTab] ?? [];
 				const currentItem = (): WrappingSelectItem | undefined => {
+					if (chatFocused) return { label: CHAT_ABOUT_THIS_LABEL, isChat: true };
 					const arr = items();
 					if (optionIndex < arr.length) return arr[optionIndex];
 					return { label: CHAT_ABOUT_THIS_LABEL, isChat: true };
@@ -131,6 +146,18 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 					};
 				}
 
+				function computeGlobalContentHeight(width: number): number {
+					let max = 0;
+					for (let i = 0; i < questions.length; i++) {
+						const q = questions[i];
+						const h = q?.multiSelect
+							? (multiSelectOptionsByTab[i]?.naturalHeight(width) ?? 0)
+							: (previewPanes[i]?.naturalHeight(width) ?? 0);
+						if (h > max) max = h;
+					}
+					return Math.max(1, max);
+				}
+
 				const dialog = buildDialog({
 					theme,
 					questions,
@@ -140,6 +167,8 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 					notesInput,
 					chatList,
 					isMulti,
+					multiSelectOptionsByTab,
+					getBodyHeight: (w) => computeGlobalContentHeight(w),
 				});
 
 				const component = {
@@ -157,7 +186,8 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 				function applySelection() {
 					const pane = previewPanes[Math.min(currentTab, questions.length - 1)] ?? previewPanes[0];
 					pane.setSelectedIndex(optionIndex);
-					pane.setFocused(!notesMode);
+					pane.setFocused(!notesMode && !chatFocused);
+					chatList.setFocused(chatFocused);
 					if (tabBar) {
 						tabBar.setConfig({
 							questions,
@@ -188,6 +218,7 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 					optionIndex = 0;
 					inputMode = false;
 					notesMode = false;
+					chatFocused = false;
 					notesInput.focused = false;
 					notesInput.setValue(answers.get(currentTab)?.notes ?? "");
 					syncMultiSelectFromAnswers();
@@ -284,6 +315,14 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 							notesInput.focused = false;
 							refreshDialog();
 							return;
+						case "focus_chat":
+							chatFocused = true;
+							refreshDialog();
+							return;
+						case "focus_options":
+							chatFocused = false;
+							refreshDialog();
+							return;
 						case "submit":
 							submitFinal();
 							return;
@@ -320,6 +359,7 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 						optionIndex,
 						inputMode,
 						notesMode,
+						chatFocused,
 						answers,
 						multiSelectIndices: multiSelectChecked,
 						questions,
