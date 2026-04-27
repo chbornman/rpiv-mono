@@ -328,9 +328,9 @@ describe("PreviewPane — left-aligned preview with top/left padding (side-by-si
 		const lines = pane.render(200);
 		const preview = extractPreviewColumnLines(lines);
 		expect(preview.length).toBeGreaterThan(0);
-		// MD column starts at leftWidth(40) + gap(2) + leftPad(1) + leftBorderBar(1) = 44.
+		// MD column starts at leftWidth(40) + gap(2) + leftPad(1) + leftBorderBar(1) + innerLeftPad(1) = 45.
 		const mdIdx = preview[0].indexOf("MD[");
-		expect(mdIdx).toBe(44);
+		expect(mdIdx).toBe(45);
 	});
 
 	it("side-by-side: first MD row is preceded by the top border row (no top padding)", () => {

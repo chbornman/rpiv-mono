@@ -23,10 +23,31 @@ export const STACKED_GAP_ROWS = 1;
 export const BORDER_VERTICAL_OVERHEAD = 2;
 /** Left + right vertical bar columns (`│ ... │`) consumed by `renderBorderedBox`. */
 export const BORDER_HORIZONTAL_OVERHEAD = 2;
+/** Inner horizontal padding (1 col) between each border bar and the content area. */
+export const BORDER_INNER_PADDING_HORIZONTAL = 1;
+/** Floor for the preview box's inner content width — CC parity (`PreviewBox.minWidth`). */
+export const BOX_MIN_CONTENT_WIDTH = 40;
 /** 1 blank separator + 1 affordance text row reserved constantly when `hasAnyPreview` (height stability). */
 export const NOTES_AFFORDANCE_OVERHEAD = 2;
 /** Affordance text shown below the bordered preview when focused on a preview-bearing option. */
 export const NOTES_AFFORDANCE_TEXT = "Notes: press n to add notes";
+
+const ANSI_SGR_RE = /\x1b\[[0-9;]*m/g;
+const ANSI_OSC8_RE = /\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
+const FENCE_MARKER_RE = /^`{3}/;
+
+/**
+ * Drops fenced-code-block marker lines (`` ``` `` opener/closer) from rendered markdown
+ * output. pi-tui's Markdown emits literal opening ` ```lang ` and closing ` ``` ` lines
+ * around code blocks; this strip leaves only the highlighted code body. Inline code
+ * (`codespan`) is unaffected — pi-tui already renders it without backticks.
+ */
+export function stripFenceMarkers(lines: readonly string[]): string[] {
+	return lines.filter((line) => {
+		const clean = line.replace(ANSI_SGR_RE, "").replace(ANSI_OSC8_RE, "");
+		return !FENCE_MARKER_RE.test(clean);
+	});
+}
 
 export interface PreviewPaneConfig {
 	items: readonly WrappingSelectItem[];
@@ -37,11 +58,11 @@ export interface PreviewPaneConfig {
 }
 
 /**
- * Wraps `lines` in a 4-sided ASCII border. Right-pads each content row to a fixed
- * inner column using `truncateToWidth(line, inner, "", true)` so the right `│`
- * lands at the same column regardless of ANSI codes in `line`. If `hidden > 0`,
- * the bottom border becomes a truncation indicator inhabiting the bottom-row
- * (regular `└─┘` corners; horizontal run replaced with ` ✂ ── N lines hidden ── `).
+ * Wraps `lines` in a 4-sided ASCII border with 1 col of inner horizontal padding on each side.
+ * Layout per content row: `│` + ` ` + content padded to `contentInner` + ` ` + `│`,
+ * where `contentInner = width - BORDER_HORIZONTAL_OVERHEAD - 2 * BORDER_INNER_PADDING_HORIZONTAL`.
+ * Top/bottom dash runs span corner-to-corner (`width - BORDER_HORIZONTAL_OVERHEAD`). When
+ * `hidden > 0`, the bottom-row dash run is replaced with ` ✂ ── N lines hidden ── ` (corners stay).
  */
 export function renderBorderedBox(
 	lines: readonly string[],
@@ -49,21 +70,23 @@ export function renderBorderedBox(
 	colorFn: (s: string) => string,
 	hidden = 0,
 ): string[] {
-	const inner = Math.max(1, width - BORDER_HORIZONTAL_OVERHEAD);
-	const top = colorFn(`┌${"─".repeat(inner)}┐`);
+	const dashSpan = Math.max(1, width - BORDER_HORIZONTAL_OVERHEAD);
+	const contentInner = Math.max(1, dashSpan - 2 * BORDER_INNER_PADDING_HORIZONTAL);
+	const pad = " ".repeat(BORDER_INNER_PADDING_HORIZONTAL);
+	const top = colorFn(`┌${"─".repeat(dashSpan)}┐`);
 	const out: string[] = [top];
 	for (const line of lines) {
-		const padded = truncateToWidth(line, inner, "", true);
-		out.push(`${colorFn("│")}${padded}${colorFn("│")}`);
+		const padded = truncateToWidth(line, contentInner, "", true);
+		out.push(`${colorFn("│")}${pad}${padded}${pad}${colorFn("│")}`);
 	}
 	if (hidden > 0) {
 		const indicator = ` ✂ ── ${hidden} lines hidden ── `;
-		const space = inner - indicator.length;
+		const space = dashSpan - indicator.length;
 		const leftFill = "─".repeat(Math.max(0, Math.floor(space / 2)));
-		const rightFill = "─".repeat(Math.max(0, inner - leftFill.length - indicator.length));
+		const rightFill = "─".repeat(Math.max(0, dashSpan - leftFill.length - indicator.length));
 		out.push(colorFn(`└${leftFill}${indicator}${rightFill}┘`));
 	} else {
-		out.push(colorFn(`└${"─".repeat(inner)}┘`));
+		out.push(colorFn(`└${"─".repeat(dashSpan)}┘`));
 	}
 	return out;
 }
@@ -256,7 +279,7 @@ export class PreviewPane implements Component {
 		const sideBySide = this.getTerminalWidth() >= PREVIEW_MIN_WIDTH && width >= PREVIEW_MIN_WIDTH;
 		const cap = sideBySide ? MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE : MAX_PREVIEW_HEIGHT_STACKED;
 		const contentBudget = Math.max(1, cap - BORDER_VERTICAL_OVERHEAD - NOTES_AFFORDANCE_OVERHEAD);
-		const innerWidth = Math.max(1, width - BORDER_HORIZONTAL_OVERHEAD);
+		const innerWidth = Math.max(1, width - BORDER_HORIZONTAL_OVERHEAD - 2 * BORDER_INNER_PADDING_HORIZONTAL);
 		const rawRows = this.computePreviewBodyFor(optionIndex, innerWidth).length;
 		const contentRows = Math.min(rawRows, contentBudget);
 		return BORDER_VERTICAL_OVERHEAD + contentRows + NOTES_AFFORDANCE_OVERHEAD;
@@ -294,18 +317,32 @@ export class PreviewPane implements Component {
 		const sideBySide = this.getTerminalWidth() >= PREVIEW_MIN_WIDTH && width >= PREVIEW_MIN_WIDTH;
 		const cap = sideBySide ? MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE : MAX_PREVIEW_HEIGHT_STACKED;
 		const contentBudget = Math.max(1, cap - BORDER_VERTICAL_OVERHEAD - NOTES_AFFORDANCE_OVERHEAD);
-		const innerWidth = Math.max(1, width - BORDER_HORIZONTAL_OVERHEAD);
+		const maxInnerWidth = Math.max(1, width - BORDER_HORIZONTAL_OVERHEAD - 2 * BORDER_INNER_PADDING_HORIZONTAL);
 
 		// Hug actual content rows; cap (with truncation indicator) is the only upper bound.
 		// No more "pad short previews to contentBudget with empty rows" — the bordered box
 		// shrinks to fit, and the dialog-level residual spacer absorbs the height difference.
-		const raw = this.computePreviewBodyFor(this.selectedIndex, innerWidth);
+		const raw = this.computePreviewBodyFor(this.selectedIndex, maxInnerWidth);
 		const truncated = raw.length > contentBudget;
 		const hidden = truncated ? raw.length - contentBudget : 0;
 		const contentLines = truncated ? raw.slice(0, contentBudget) : raw;
 
+		// Per-option box sizing (CC parity: `contentWidth = max(minWidth, widestRenderedLine)`,
+		// `boxWidth = min(contentWidth + 4, effectiveMaxWidth)`). Box hugs THIS option's widest
+		// visible line, floored at BOX_MIN_CONTENT_WIDTH and capped at maxInnerWidth. Trailing
+		// whitespace is stripped before measuring because pi-tui's `Markdown.render(width)` pads
+		// every line to `width` (markdown.js — `paddingNeeded = width - visibleLen`), which would
+		// otherwise force the box to fill the whole column allocation.
+		let widest = Math.min(BOX_MIN_CONTENT_WIDTH, maxInnerWidth);
+		for (const line of contentLines) {
+			const w = visibleWidth(line.replace(/\s+$/, ""));
+			if (w > widest) widest = w;
+		}
+		const innerWidth = Math.min(widest, maxInnerWidth);
+		const boxWidth = innerWidth + BORDER_HORIZONTAL_OVERHEAD + 2 * BORDER_INNER_PADDING_HORIZONTAL;
+
 		const colorFn = (s: string) => this.theme.fg("accent", s);
-		const boxedLines = renderBorderedBox(contentLines, width, colorFn, hidden);
+		const boxedLines = renderBorderedBox(contentLines, boxWidth, colorFn, hidden);
 
 		// Notes affordance row — reserved CONSTANTLY when hasAnyPreview (height stability of
 		// the affordance row's offset relative to the box). Text appears only when focused on a
@@ -333,6 +370,6 @@ export class PreviewPane implements Component {
 			md = new Markdown(text, 0, 0, this.markdownTheme);
 			this.markdownCache.set(optionIndex, md);
 		}
-		return md.render(width);
+		return stripFenceMarkers(md.render(width));
 	}
 }
