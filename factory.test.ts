@@ -1,6 +1,13 @@
 import { createMockPi } from "@juicesharp/rpiv-test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAskUserQuestionTool } from "./ask-user-question.js";
+import type { QuestionAnswer, QuestionnaireResult } from "./types.js";
+
+/** Narrowed tool-result shape for test assertions. */
+interface ToolResult {
+	content: Array<{ type: string; text: string }>;
+	details: QuestionnaireResult;
+}
 
 interface RenderableComponent {
 	render: (w: number) => string[];
@@ -31,19 +38,30 @@ function driveCustom(script: (c: RenderableComponent, done: (v: unknown) => void
 				kb: undefined,
 				done: (v: unknown) => void,
 			) => RenderableComponent;
-			const component = f({ requestRender, terminal: { columns: 80 } }, identityTheme, undefined, resolve);
+			const component = f({ requestRender, terminal: { columns: 120 } }, identityTheme, undefined, resolve);
 			script(component, resolve);
 		});
 	});
 	return { custom, requestRender };
 }
 
-const params = {
+// Real key sequences from pi-tui
+const KEY = {
+	ENTER: "\r",
+	ESC: "\x1b",
+	DOWN: "\x1b[B",
+	UP: "\x1b[A",
+	TAB: "\t",
+	SHIFT_TAB: "\x1b[Z",
+	SPACE: " ",
+};
+
+const threeOptionParams = {
 	questions: [
 		{
 			question: "Pick one",
-			header: "HDR",
-			options: [{ label: "A" }, { label: "B" }],
+			header: "Choice",
+			options: [{ label: "Alpha" }, { label: "Beta" }, { label: "Gamma" }],
 		},
 	],
 };
@@ -74,39 +92,42 @@ describe("ask_user_question — factory driver (real pi-tui keybindings)", () =>
 			done({ answers: [], cancelled: true });
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
-		await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
+		await tool.execute?.("tc", threeOptionParams as never, undefined as never, undefined as never, ctx);
 	});
 
 	it("Esc cancels → returns decline envelope with cancelled=true", async () => {
 		const tool = register();
 		const { custom } = driveCustom((c) => {
-			c.handleInput("\u001b");
+			c.handleInput(KEY.ESC);
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
-		const r = await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
+		const r = (await tool.execute?.("tc", threeOptionParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
 		expect(r?.details).toMatchObject({ cancelled: true });
 	});
 
 	it("Enter on first item → single-question auto-submits", async () => {
 		const tool = register();
 		const { custom } = driveCustom((c) => {
-			c.handleInput("\r");
+			c.handleInput(KEY.ENTER);
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
-		const r = await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
-		const details = r?.details as { cancelled: boolean; answers: Array<Record<string, unknown>> };
-		expect(details).toMatchObject({ cancelled: false });
-		expect(details.answers[0]).toMatchObject({ answer: "A", wasCustom: false });
+		const r = (await tool.execute?.("tc", threeOptionParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details).toMatchObject({ cancelled: false });
+		expect(r?.details.answers[0]).toMatchObject({ answer: "Alpha", wasCustom: false });
 	});
 
 	it("DOWN navigates without completing; Esc cancels", async () => {
 		const tool = register();
 		const { custom, requestRender } = driveCustom((c) => {
-			c.handleInput("\u001b[B");
-			c.handleInput("\u001b");
+			c.handleInput(KEY.DOWN);
+			c.handleInput(KEY.ESC);
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
-		await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
+		await tool.execute?.("tc", threeOptionParams as never, undefined as never, undefined as never, ctx);
 		expect(requestRender).toHaveBeenCalled();
 	});
 
@@ -117,7 +138,115 @@ describe("ask_user_question — factory driver (real pi-tui keybindings)", () =>
 			done({ answers: [], cancelled: true });
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
-		await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
+		await tool.execute?.("tc", threeOptionParams as never, undefined as never, undefined as never, ctx);
+	});
+});
+
+describe("ask_user_question — single-question navigation", () => {
+	it("DOWN to Beta, Enter → selects Beta (wasCustom=false)", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.DOWN); // 0 → 1 (Beta)
+			c.handleInput(KEY.ENTER);
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", threeOptionParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(false);
+		expect(r?.details.answers[0]).toMatchObject({ questionIndex: 0, answer: "Beta", wasCustom: false });
+	});
+
+	it("DOWN×2 to Gamma, UP×1 back to Beta, Enter → selects Beta", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.DOWN); // → Beta
+			c.handleInput(KEY.DOWN); // → Gamma
+			c.handleInput(KEY.UP); // → Beta
+			c.handleInput(KEY.ENTER);
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", threeOptionParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.answers[0].answer).toBe("Beta");
+	});
+
+	it("UP wraps from Alpha past last option through chat back to Gamma", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			// Items = [Alpha, Beta, Gamma, "Type something."] (index 3 = Other sentinel)
+			c.handleInput(KEY.UP); // wraps to last (Type something, inputMode=true)
+			c.handleInput(KEY.DOWN); // → focus_chat
+			c.handleInput(KEY.UP); // → focus_options (back to Type something)
+			c.handleInput(KEY.UP); // → Gamma (index 2)
+			c.handleInput(KEY.ENTER); // confirm Gamma
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", threeOptionParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(false);
+		expect(r?.details.answers[0].answer).toBe("Gamma");
+	});
+});
+
+describe("ask_user_question — 'Type something.' free-text flow", () => {
+	const freeTextParams = {
+		questions: [{ question: "Name?", header: "Name", options: [{ label: "Default" }] }],
+	};
+
+	it("navigate to Other sentinel, type text, Enter → wasCustom=true with typed text", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			// Items: [Default, "Type something."] — DOWN to Type something
+			c.handleInput(KEY.DOWN); // → Type something (inputMode=true)
+			c.handleInput("h");
+			c.handleInput("e");
+			c.handleInput("l");
+			c.handleInput("l");
+			c.handleInput("o");
+			c.handleInput(KEY.ENTER);
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", freeTextParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(false);
+		expect(r?.details.answers[0].wasCustom).toBe(true);
+		expect(r?.details.answers[0].answer).toBe("hello");
+	});
+
+	it("Type something with no input → wasCustom=true, answer=null", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.DOWN); // → Type something
+			c.handleInput(KEY.ENTER); // confirm with empty buffer
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", freeTextParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.answers[0].wasCustom).toBe(true);
+		expect(r?.details.answers[0].answer).toBeNull();
+		expect(r?.content[0].text).toContain("(no input)");
+	});
+
+	it("Type text, backspace removes last char, then Enter", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.DOWN); // → Type something
+			c.handleInput("a");
+			c.handleInput("b");
+			c.handleInput("c");
+			c.handleInput("\x7f"); // backspace
+			c.handleInput(KEY.ENTER);
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", freeTextParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.answers[0].answer).toBe("ab");
 	});
 });
 
@@ -125,58 +254,284 @@ describe("ask_user_question — chat focus integration", () => {
 	it("DOWN past last option focuses chat row; ENTER returns wasChat:true", async () => {
 		const tool = register();
 		const { custom } = driveCustom((c) => {
-			// items = [A, B, "Type something."] (3 items, last index = 2)
-			c.handleInput("\u001b[B"); // optionIndex 0 → 1 (B)
-			c.handleInput("\u001b[B"); // optionIndex 1 → 2 (Type something, inputMode=true)
-			c.handleInput("\u001b[B"); // DOWN-on-last + inputMode → focus_chat
-			c.handleInput("\r"); // ENTER while chatFocused → confirm with wasChat:true
+			// items = [Alpha, Beta, Gamma, "Type something."] (4 items)
+			c.handleInput(KEY.DOWN); // → Beta
+			c.handleInput(KEY.DOWN); // → Gamma
+			c.handleInput(KEY.DOWN); // → Type something (inputMode=true)
+			c.handleInput(KEY.DOWN); // → focus_chat
+			c.handleInput(KEY.ENTER); // confirm chat
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
-		const r = await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
-		const details = r?.details as {
-			cancelled: boolean;
-			answers: Array<{ wasChat?: boolean; answer?: string | null }>;
-		};
-		expect(details.cancelled).toBe(false);
-		expect(details.answers[0]?.wasChat).toBe(true);
-		expect(details.answers[0]?.answer).toBe("Chat about this");
+		const r = (await tool.execute?.("tc", threeOptionParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(false);
+		expect(r?.details.answers[0]?.wasChat).toBe(true);
+		expect(r?.details.answers[0]?.answer).toBe("Chat about this");
+		expect(r?.content[0].text).toContain("Continue the conversation");
 	});
 
 	it("UP-from-chat clears chatFocused; subsequent ENTER returns options answer (not wasChat)", async () => {
 		const tool = register();
 		const { custom } = driveCustom((c) => {
-			c.handleInput("\u001b[B"); // → 1 (B)
-			c.handleInput("\u001b[B"); // → 2 (Type something, inputMode=true)
-			c.handleInput("\u001b[B"); // → focus_chat
-			c.handleInput("\u001b[A"); // UP → focus_options (chatFocused=false; optionIndex/inputMode unchanged)
-			c.handleInput("\r"); // ENTER → confirm via inputMode branch with empty buffer
+			c.handleInput(KEY.DOWN); // → Beta
+			c.handleInput(KEY.DOWN); // → Gamma
+			c.handleInput(KEY.DOWN); // → Type something (inputMode=true)
+			c.handleInput(KEY.DOWN); // → focus_chat
+			c.handleInput(KEY.UP); // → focus_options (back to Type something)
+			c.handleInput(KEY.ENTER); // confirm via inputMode branch with empty buffer
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
-		const r = await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
-		const details = r?.details as {
-			cancelled: boolean;
-			answers: Array<{ wasChat?: boolean; wasCustom?: boolean; answer?: string | null }>;
-		};
-		expect(details.cancelled).toBe(false);
-		expect(details.answers[0]?.wasChat).not.toBe(true);
-		expect(details.answers[0]?.wasCustom).toBe(true);
-		expect(details.answers[0]?.answer).toBeNull();
+		const r = (await tool.execute?.("tc", threeOptionParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(false);
+		expect(r?.details.answers[0]?.wasChat).not.toBe(true);
+		expect(r?.details.answers[0]?.wasCustom).toBe(true);
+		expect(r?.details.answers[0]?.answer).toBeNull();
+	});
+
+	it("Esc from chat cancels the whole dialog", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.DOWN); // → Beta
+			c.handleInput(KEY.DOWN); // → Gamma
+			c.handleInput(KEY.DOWN); // → Type something
+			c.handleInput(KEY.DOWN); // → focus_chat
+			c.handleInput(KEY.ESC); // cancel
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", threeOptionParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(true);
 	});
 
 	it("dialog total line count is identical across tab switches (mixed single+multi fixture)", async () => {
 		const tool = register();
 		let lengthTab0 = 0;
 		let lengthTab1 = 0;
-		// Render at 120 so the multiSelect hint suffix doesn't wrap — the FixedHeightBox body
-		// stabilization is the property under test, not hint-wrap symmetry.
 		const { custom } = driveCustom((c, done) => {
 			lengthTab0 = c.render(120).length;
-			c.handleInput("\t"); // Tab → next question tab
+			c.handleInput(KEY.TAB); // Tab → next question tab
 			lengthTab1 = c.render(120).length;
 			done({ answers: [], cancelled: true });
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
 		await tool.execute?.("tc", mixedParams as never, undefined as never, undefined as never, ctx);
 		expect(lengthTab0).toBe(lengthTab1);
+	});
+});
+
+describe("ask_user_question — multi-select flow (single question)", () => {
+	const multiParams = {
+		questions: [
+			{
+				question: "Pick areas",
+				header: "Areas",
+				multiSelect: true,
+				options: [{ label: "Frontend" }, { label: "Backend" }, { label: "DevOps" }],
+			},
+		],
+	};
+
+	it("Space toggles items, Enter confirms selected labels", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.SPACE); // toggle Frontend ON
+			c.handleInput(KEY.DOWN); // → Backend
+			c.handleInput(KEY.SPACE); // toggle Backend ON
+			c.handleInput(KEY.DOWN); // → DevOps (not toggled)
+			c.handleInput(KEY.ENTER); // confirm multi-select
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", multiParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(false);
+		expect(r?.details.answers[0].answer).toBeNull();
+		expect(r?.details.answers[0].selected).toEqual(["Frontend", "Backend"]);
+	});
+
+	it("Space toggles on then off → item excluded", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.SPACE); // Frontend ON
+			c.handleInput(KEY.SPACE); // Frontend OFF
+			c.handleInput(KEY.DOWN); // → Backend
+			c.handleInput(KEY.SPACE); // Backend ON
+			c.handleInput(KEY.ENTER);
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", multiParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.answers[0].selected).toEqual(["Backend"]);
+	});
+
+	it("Enter with nothing toggled → selected=[]", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.ENTER); // confirm with no toggles
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", multiParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.answers[0].selected).toEqual([]);
+	});
+});
+
+describe("ask_user_question — multi-question tab cycling flow", () => {
+	const twoParams = {
+		questions: [
+			{ question: "Q1?", header: "First", options: [{ label: "A" }, { label: "B" }] },
+			{ question: "Q2?", header: "Second", options: [{ label: "X" }, { label: "Y" }] },
+		],
+	};
+
+	it("answer Q1 → auto-advance to Q2 → answer Q2 → auto-advance to Submit", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.ENTER); // Q1: select A → auto-advance to Q2
+			c.handleInput(KEY.ENTER); // Q2: select X → auto-advance to Submit
+			c.handleInput(KEY.ENTER); // Submit (all answered)
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", twoParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(false);
+		expect(r?.details.answers).toHaveLength(2);
+		expect(r?.details.answers[0].answer).toBe("A");
+		expect(r?.details.answers[1].answer).toBe("X");
+	});
+
+	it("Tab cycles: Q1 → Q2 → Submit → Shift+Tab back to Q2", async () => {
+		const tool = register();
+		let renderQ1 = 0;
+		let renderQ2 = 0;
+		let renderSubmit = 0;
+		const { custom } = driveCustom((c, done) => {
+			renderQ1 = c.render(120).length;
+			c.handleInput(KEY.TAB); // → Q2
+			renderQ2 = c.render(120).length;
+			c.handleInput(KEY.TAB); // → Submit
+			renderSubmit = c.render(120).length;
+			c.handleInput(KEY.SHIFT_TAB); // → Q2
+			done({ answers: [], cancelled: true });
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		await tool.execute?.("tc", twoParams as never, undefined as never, undefined as never, ctx);
+		expect(renderQ1).toBe(renderQ2);
+		expect(renderQ2).toBe(renderSubmit);
+	});
+
+	it("cancel mid-flow preserves partial answers in details", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.ENTER); // Q1: select A → auto-advance to Q2
+			c.handleInput(KEY.ESC); // cancel on Q2
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", twoParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(true);
+		expect(r?.content[0].text).toContain("declined");
+		expect(r?.details.answers).toHaveLength(1);
+		expect(r?.details.answers[0].answer).toBe("A");
+	});
+
+	it("Submit tab with Enter when NOT all answered → ignore, then answer and submit", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.TAB); // → Q2
+			c.handleInput(KEY.TAB); // → Submit
+			c.handleInput(KEY.ENTER); // ignored (not all answered)
+			c.handleInput(KEY.SHIFT_TAB); // → Q2
+			c.handleInput(KEY.SHIFT_TAB); // → Q1
+			c.handleInput(KEY.ENTER); // answer Q1 → Q2
+			c.handleInput(KEY.ENTER); // answer Q2 → Submit
+			c.handleInput(KEY.ENTER); // now Submit works
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", twoParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(false);
+		expect(r?.details.answers).toHaveLength(2);
+	});
+});
+
+describe("ask_user_question — MAX_QUESTIONS (4 questions) complete flow", () => {
+	const fourParams = {
+		questions: [
+			{ question: "Q1?", header: "H1", options: [{ label: "A" }] },
+			{ question: "Q2?", header: "H2", options: [{ label: "B" }] },
+			{ question: "Q3?", header: "H3", options: [{ label: "C" }] },
+			{ question: "Q4?", header: "H4", options: [{ label: "D" }] },
+		],
+	};
+
+	it("answer all 4 questions with auto-advance, then submit", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.ENTER); // Q1 → Q2
+			c.handleInput(KEY.ENTER); // Q2 → Q3
+			c.handleInput(KEY.ENTER); // Q3 → Q4
+			c.handleInput(KEY.ENTER); // Q4 → Submit tab
+			c.handleInput(KEY.ENTER); // Submit
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", fourParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(false);
+		expect(r?.details.answers).toHaveLength(4);
+		const labels = r?.details.answers.map((a: QuestionAnswer) => a.answer);
+		expect(labels).toEqual(["A", "B", "C", "D"]);
+		const lines = r?.content[0].text.split("\n");
+		expect(lines?.length).toBe(4);
+		expect(lines?.[0]).toBe("H1: User selected: A");
+		expect(lines?.[3]).toBe("H4: User selected: D");
+	});
+
+	it("cancel after answering 2 of 4 → partial answers preserved", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.ENTER); // Q1 → Q2
+			c.handleInput(KEY.ENTER); // Q2 → Q3
+			c.handleInput(KEY.ESC); // cancel on Q3
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", fourParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(true);
+		expect(r?.details.answers).toHaveLength(2);
+	});
+});
+
+describe("ask_user_question — mixed single+multi question flow", () => {
+	it("answer single-select Q1, toggle multi-select Q2, submit", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.ENTER); // Q1 (single): select A → auto-advance to Q2
+			c.handleInput(KEY.SPACE); // Q2 (multi): toggle FE ON
+			c.handleInput(KEY.DOWN); // → BE
+			c.handleInput(KEY.DOWN); // → DB
+			c.handleInput(KEY.SPACE); // toggle DB ON
+			c.handleInput(KEY.ENTER); // confirm multi-select → Submit tab
+			c.handleInput(KEY.ENTER); // Submit (all answered)
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", mixedParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(false);
+		expect(r?.details.answers).toHaveLength(2);
+		expect(r?.details.answers[0]).toMatchObject({ answer: "A", wasCustom: false });
+		expect(r?.details.answers[1]).toMatchObject({ answer: null, selected: ["FE", "DB"] });
 	});
 });

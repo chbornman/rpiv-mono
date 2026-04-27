@@ -48,12 +48,29 @@ describe("QuestionSchema — option/preview/multiSelect/header shape", () => {
 		expect(Value.Check(QuestionsSchema, [q])).toBe(true);
 	});
 
+	it("accepts a question with all optional fields populated", () => {
+		const q: QuestionData = {
+			question: "Pick architecture",
+			header: "Architecture",
+			options: [
+				{ label: "Monolith", description: "Single deployable unit", preview: "## Monolith\n\nSimple" },
+				{ label: "Microservices", description: "Distributed services", preview: "## Micro\n\nScalable" },
+			],
+			multiSelect: false,
+		};
+		expect(Value.Check(QuestionsSchema, [q])).toBe(true);
+	});
+
 	it("accepts multiSelect: true", () => {
 		expect(Value.Check(QuestionsSchema, [makeQuestion({ multiSelect: true })])).toBe(true);
 	});
 
 	it("accepts header field", () => {
 		expect(Value.Check(QuestionsSchema, [makeQuestion({ header: "Architecture" })])).toBe(true);
+	});
+
+	it("accepts a single-option question", () => {
+		expect(Value.Check(QuestionsSchema, [makeQuestion({ options: [{ label: "OK" }] })])).toBe(true);
 	});
 
 	it("rejects empty options array (minItems=1 on options)", () => {
@@ -71,8 +88,26 @@ describe("QuestionParamsSchema — top-level shape", () => {
 		expect(Value.Check(QuestionParamsSchema, { questions: [makeQuestion()] })).toBe(true);
 	});
 
+	it("accepts full valid payload with preview + multiSelect", () => {
+		const payload = {
+			questions: [
+				{
+					question: "Choose",
+					header: "Pick",
+					multiSelect: true,
+					options: [{ label: "A", description: "First", preview: "# A" }, { label: "B" }],
+				},
+			],
+		};
+		expect(Value.Check(QuestionParamsSchema, payload)).toBe(true);
+	});
+
 	it("rejects missing 'questions' field", () => {
 		expect(Value.Check(QuestionParamsSchema, {})).toBe(false);
+	});
+
+	it("rejects non-array questions field", () => {
+		expect(Value.Check(QuestionParamsSchema, { questions: "not array" })).toBe(false);
 	});
 });
 
@@ -106,9 +141,31 @@ describe("isQuestionnaireResult — type guard", () => {
 		expect(isQuestionnaireResult(r)).toBe(true);
 	});
 
+	it("accepts a result with error field", () => {
+		expect(isQuestionnaireResult({ answers: [], cancelled: true, error: "no_ui" })).toBe(true);
+	});
+
+	it("accepts a result with populated answers", () => {
+		expect(
+			isQuestionnaireResult({
+				answers: [{ questionIndex: 0, question: "Q?", answer: "A" }],
+				cancelled: false,
+			}),
+		).toBe(true);
+	});
+
 	it("rejects null / undefined", () => {
 		expect(isQuestionnaireResult(null)).toBe(false);
 		expect(isQuestionnaireResult(undefined)).toBe(false);
+	});
+
+	it("rejects primitives", () => {
+		expect(isQuestionnaireResult(42)).toBe(false);
+		expect(isQuestionnaireResult("oops")).toBe(false);
+	});
+
+	it("rejects an array", () => {
+		expect(isQuestionnaireResult([])).toBe(false);
 	});
 
 	it("rejects missing fields", () => {

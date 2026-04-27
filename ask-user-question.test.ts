@@ -99,6 +99,26 @@ describe("buildQuestionnaireResponse — completed", () => {
 		expect(r.content[0]).toMatchObject({ text: "Q1: User selected: Yes" });
 	});
 
+	it("empty string header falls back to 'Q{n+1}:' label", () => {
+		const params: QuestionParams = {
+			questions: [
+				{ question: "Q1?", header: "", options: [{ label: "Yes" }] },
+				{ question: "Q2?", header: "Real", options: [{ label: "No" }] },
+			],
+		};
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [
+				{ questionIndex: 0, question: "Q1?", answer: "Yes" },
+				{ questionIndex: 1, question: "Q2?", answer: "No" },
+			],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		const lines = r.content[0].text.split("\n");
+		expect(lines[0]).toBe("Q1: User selected: Yes");
+		expect(lines[1]).toBe("Real: User selected: No");
+	});
+
 	it("multiSelect answer → 'User selected: A, B, C' (selected[].join)", () => {
 		const params: QuestionParams = {
 			questions: [
@@ -173,6 +193,88 @@ describe("buildQuestionnaireResponse — completed", () => {
 		const r = buildQuestionnaireResponse(result, params);
 		expect(r.details.cancelled).toBe(true);
 		expect(r.content[0]).toEqual({ type: "text", text: "User declined to answer questions" });
+	});
+});
+
+describe("buildQuestionnaireResponse — multi-question mixed types", () => {
+	it("formats 2 answered questions with headers on separate lines", () => {
+		const params: QuestionParams = {
+			questions: [
+				{ question: "Framework?", header: "Framework", options: [{ label: "React" }, { label: "Vue" }] },
+				{ question: "Areas?", header: "Areas", multiSelect: true, options: [{ label: "FE" }, { label: "BE" }] },
+			],
+		};
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [
+				{ questionIndex: 0, question: "Framework?", answer: "React", wasCustom: false },
+				{ questionIndex: 1, question: "Areas?", answer: null, selected: ["FE", "BE"] },
+			],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		const text = r.content[0].text;
+		expect(text).toContain("Framework: User selected: React");
+		expect(text).toContain("Areas: User selected: FE, BE");
+		expect(text.split("\n").length).toBe(2);
+	});
+
+	it("formats 3 questions with mixed answer types: regular, custom, chat", () => {
+		const params: QuestionParams = {
+			questions: [
+				{ question: "Q1?", header: "Scope", options: [{ label: "A" }] },
+				{ question: "Q2?", header: "Custom", options: [{ label: "X" }] },
+				{ question: "Q3?", header: "Help", options: [{ label: "Y" }] },
+			],
+		};
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [
+				{ questionIndex: 0, question: "Q1?", answer: "A", wasCustom: false },
+				{ questionIndex: 1, question: "Q2?", answer: "my own thing", wasCustom: true },
+				{ questionIndex: 2, question: "Q3?", answer: "Chat about this", wasChat: true },
+			],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		const lines = r.content[0].text.split("\n");
+		expect(lines[0]).toBe("Scope: User selected: A");
+		expect(lines[1]).toBe("Custom: User answered: my own thing");
+		expect(lines[2]).toContain("Continue the conversation");
+	});
+
+	it("skips unanswered questions (missing answer in array)", () => {
+		const params: QuestionParams = {
+			questions: [
+				{ question: "Q1?", header: "First", options: [{ label: "A" }] },
+				{ question: "Q2?", header: "Second", options: [{ label: "B" }] },
+			],
+		};
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [{ questionIndex: 1, question: "Q2?", answer: "B", wasCustom: false }],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		expect(r.content[0].text).toBe("Second: User selected: B");
+		expect(r.content[0].text).not.toContain("First");
+	});
+
+	it("preserves notes in details across multiple questions but never in content text", () => {
+		const params: QuestionParams = {
+			questions: [
+				{ question: "Q1?", header: "H1", options: [{ label: "A" }] },
+				{ question: "Q2?", header: "H2", options: [{ label: "B" }] },
+			],
+		};
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [
+				{ questionIndex: 0, question: "Q1?", answer: "A", notes: "secret note 1" },
+				{ questionIndex: 1, question: "Q2?", answer: "B", notes: "secret note 2" },
+			],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		expect(r.content[0].text).not.toContain("secret note");
+		expect(r.details.answers[0].notes).toBe("secret note 1");
+		expect(r.details.answers[1].notes).toBe("secret note 2");
 	});
 });
 

@@ -112,6 +112,18 @@ describe("ask_user_question.execute — ctx.ui.custom dispatch", () => {
 	});
 });
 
+describe("ask_user_question.execute — undefined result from ctx.ui.custom", () => {
+	it("returns decline envelope when custom resolves to undefined", async () => {
+		const tool = register();
+		const custom = vi.fn(async () => undefined) as unknown as CustomFn;
+		const ctx = createMockCtx({ hasUI: true, ui: { custom } as never });
+		const params = { questions: [{ question: "Q?", options: [{ label: "A" }] }] };
+		const r = await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx as never);
+		expect(r?.details).toMatchObject({ cancelled: true });
+		expect(r?.content[0]).toMatchObject({ text: expect.stringContaining("declined") });
+	});
+});
+
 describe("ask_user_question — registration", () => {
 	it("registers a typebox schema with a top-level questions array", () => {
 		const tool = register();
