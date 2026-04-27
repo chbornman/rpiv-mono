@@ -1,112 +1,203 @@
 import { describe, expect, it } from "vitest";
-import { buildMainItems, buildResponse, buildToolResult, itemAt, wrapIndex } from "./ask-user-question.js";
-import type { WrappingSelectItem } from "./wrapping-select.js";
+import { buildItemsForQuestion, buildQuestionnaireResponse, buildToolResult } from "./ask-user-question.js";
+import type { QuestionnaireResult, QuestionParams } from "./types.js";
 
-describe("buildMainItems", () => {
+describe("buildItemsForQuestion", () => {
 	it("appends the Type-something sentinel", () => {
-		const items = buildMainItems([{ label: "A" }, { label: "B", description: "b-desc" }]);
+		const items = buildItemsForQuestion({
+			question: "q",
+			options: [{ label: "A" }, { label: "B", description: "b-desc" }],
+		});
 		expect(items).toEqual([
 			{ label: "A", description: undefined },
 			{ label: "B", description: "b-desc" },
 			{ label: "Type something.", isOther: true },
 		]);
 	});
-	it("returns just the sentinel for empty options", () => {
-		const items = buildMainItems([]);
-		expect(items).toEqual([{ label: "Type something.", isOther: true }]);
-	});
-	it("is non-mutating", () => {
-		const input = [{ label: "A" }];
-		buildMainItems(input);
-		expect(input).toEqual([{ label: "A" }]);
-	});
-});
 
-describe("itemAt", () => {
-	const main: WrappingSelectItem[] = [{ label: "m0" }, { label: "m1" }];
-	const chat: WrappingSelectItem[] = [{ label: "c0", isChat: true }];
-	it("returns main item for in-range index", () => {
-		expect(itemAt(0, main, chat)).toEqual({ label: "m0" });
-		expect(itemAt(1, main, chat)).toEqual({ label: "m1" });
-	});
-	it("returns chat item when index beyond main", () => {
-		expect(itemAt(2, main, chat)).toEqual({ label: "c0", isChat: true });
-	});
-	it("returns undefined when out of combined range", () => {
-		expect(itemAt(5, main, chat)).toBeUndefined();
-	});
-});
-
-describe("wrapIndex", () => {
-	it("wraps negatives correctly", () => {
-		expect(wrapIndex(-1, 3)).toBe(2);
-		expect(wrapIndex(-4, 3)).toBe(2);
-	});
-	it("wraps positives correctly", () => {
-		expect(wrapIndex(3, 3)).toBe(0);
-		expect(wrapIndex(7, 3)).toBe(1);
-	});
-	it("returns 0 when total=1", () => {
-		expect(wrapIndex(0, 1)).toBe(0);
-		expect(wrapIndex(-5, 1)).toBe(0);
-		expect(wrapIndex(99, 1)).toBe(0);
-	});
-});
-
-describe("buildResponse", () => {
-	const params = { question: "Q?", options: [{ label: "A" }] };
-
-	it("returns decline envelope for null choice", () => {
-		const r = buildResponse(null, params);
-		expect(r.content[0]).toEqual({ type: "text", text: "User declined to answer questions" });
-		expect(r.details.answer).toBeNull();
-	});
-
-	it("returns isOther custom-answer envelope", () => {
-		const r = buildResponse({ label: "my answer", isOther: true }, params);
-		expect(r.content[0]).toEqual({ type: "text", text: "User answered: my answer" });
-		expect(r.details).toMatchObject({ answer: "my answer", wasCustom: true });
-	});
-
-	it("returns isOther with (no input) placeholder for empty label", () => {
-		const r = buildResponse({ label: "", isOther: true }, params);
-		expect(r.content[0]).toEqual({ type: "text", text: "User answered: (no input)" });
-		expect(r.details.answer).toBeNull();
-	});
-
-	it("returns isChat envelope", () => {
-		const r = buildResponse({ label: "Chat about this", isChat: true }, params);
-		expect(r.details).toMatchObject({
-			answer: "User wants to chat about this",
-			wasChat: true,
+	it("skips the sentinel when multiSelect is true", () => {
+		const items = buildItemsForQuestion({
+			question: "Pick areas",
+			multiSelect: true,
+			options: [{ label: "FE" }, { label: "BE" }, { label: "Tests" }],
 		});
+		expect(items).toEqual([
+			{ label: "FE", description: undefined },
+			{ label: "BE", description: undefined },
+			{ label: "Tests", description: undefined },
+		]);
+		expect(items.some((i) => i.isOther)).toBe(false);
 	});
 
-	it("isOther precedence over isChat (isOther wins)", () => {
-		const r = buildResponse({ label: "x", isOther: true, isChat: true }, params);
-		expect(r.details).toMatchObject({ wasCustom: true });
-		expect(r.details.wasChat).toBeUndefined();
+	it("appends the sentinel when multiSelect is false", () => {
+		const items = buildItemsForQuestion({
+			question: "Pick one",
+			multiSelect: false,
+			options: [{ label: "Yes" }],
+		});
+		expect(items).toEqual([
+			{ label: "Yes", description: undefined },
+			{ label: "Type something.", isOther: true },
+		]);
 	});
 
-	it("returns plain-selection envelope for regular item", () => {
-		const r = buildResponse({ label: "A" }, params);
-		expect(r.content[0]).toEqual({ type: "text", text: "User selected: A" });
-		expect(r.details).toMatchObject({ answer: "A", wasCustom: false });
+	it("appends the sentinel when multiSelect is undefined (default single-select)", () => {
+		const items = buildItemsForQuestion({
+			question: "Pick one",
+			options: [{ label: "No" }],
+		});
+		expect(items).toHaveLength(2);
+		expect(items[1]).toEqual({ label: "Type something.", isOther: true });
+	});
+});
+
+describe("buildQuestionnaireResponse — cancelled", () => {
+	const params: QuestionParams = { questions: [{ question: "Q?", options: [{ label: "A" }] }] };
+
+	it("null result → decline envelope + empty answers + cancelled true", () => {
+		const r = buildQuestionnaireResponse(null, params);
+		expect(r.content[0]).toEqual({ type: "text", text: "User declined to answer questions" });
+		expect(r.details.cancelled).toBe(true);
+		expect(r.details.answers).toEqual([]);
+	});
+
+	it("cancelled result preserves partial answers in details (not in content)", () => {
+		const result: QuestionnaireResult = {
+			cancelled: true,
+			answers: [{ questionIndex: 0, question: "Q?", answer: "A", wasCustom: false }],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		expect(r.content[0]).toMatchObject({ text: "User declined to answer questions" });
+		expect(r.details.cancelled).toBe(true);
+		expect(r.details.answers).toEqual(result.answers);
+	});
+});
+
+describe("buildQuestionnaireResponse — completed", () => {
+	it("single answered question → 'header: User selected: <label>'", () => {
+		const params: QuestionParams = {
+			questions: [{ question: "Pick one", header: "Architecture", options: [{ label: "Option A" }] }],
+		};
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [{ questionIndex: 0, question: "Pick one", answer: "Option A", wasCustom: false }],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		expect(r.content[0]).toEqual({ type: "text", text: "Architecture: User selected: Option A" });
+		expect(r.details).toBe(result);
+	});
+
+	it("missing header falls back to 'Q{n+1}:' label", () => {
+		const params: QuestionParams = {
+			questions: [{ question: "Pick", options: [{ label: "Yes" }] }],
+		};
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [{ questionIndex: 0, question: "Pick", answer: "Yes" }],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		expect(r.content[0]).toMatchObject({ text: "Q1: User selected: Yes" });
+	});
+
+	it("multiSelect answer → 'User selected: A, B, C' (selected[].join)", () => {
+		const params: QuestionParams = {
+			questions: [
+				{ question: "Areas", header: "Areas", multiSelect: true, options: [{ label: "FE" }, { label: "BE" }] },
+			],
+		};
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [{ questionIndex: 0, question: "Areas", answer: null, selected: ["FE", "BE"] }],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		expect(r.content[0]).toMatchObject({ text: "Areas: User selected: FE, BE" });
+	});
+
+	it("custom typed answer → 'User answered: <text>'", () => {
+		const params: QuestionParams = {
+			questions: [{ question: "Free?", header: "Free", options: [{ label: "Yes" }] }],
+		};
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [{ questionIndex: 0, question: "Free?", answer: "my custom", wasCustom: true }],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		expect(r.content[0]).toMatchObject({ text: "Free: User answered: my custom" });
+	});
+
+	it("empty custom answer → 'User answered: (no input)'", () => {
+		const params: QuestionParams = {
+			questions: [{ question: "Free?", header: "H", options: [{ label: "Yes" }] }],
+		};
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [{ questionIndex: 0, question: "Free?", answer: null, wasCustom: true }],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		expect(r.content[0]).toMatchObject({ text: "H: User answered: (no input)" });
+	});
+
+	it("chat answer → 'User wants to chat...' continuation message", () => {
+		const params: QuestionParams = {
+			questions: [{ question: "Help", header: "Help", options: [{ label: "Yes" }] }],
+		};
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [{ questionIndex: 0, question: "Help", answer: "Chat about this", wasChat: true }],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		expect(r.content[0].text).toContain("Continue the conversation");
+	});
+
+	it("notes are kept in details but excluded from content text", () => {
+		const params: QuestionParams = {
+			questions: [{ question: "Pick", header: "H", options: [{ label: "Yes" }] }],
+		};
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [{ questionIndex: 0, question: "Pick", answer: "Yes", notes: "because of X" }],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		expect(r.content[0].text).not.toContain("because of X");
+		expect(r.details.answers[0].notes).toBe("because of X");
+	});
+
+	it("cancelled: false with no matching answers never returns DECLINE_MESSAGE text", () => {
+		const params: QuestionParams = {
+			questions: [{ question: "Q?", options: [{ label: "A" }] }],
+		};
+		const result: QuestionnaireResult = {
+			cancelled: false,
+			answers: [],
+		};
+		const r = buildQuestionnaireResponse(result, params);
+		expect(r.details.cancelled).toBe(true);
+		expect(r.content[0]).toEqual({ type: "text", text: "User declined to answer questions" });
 	});
 });
 
 describe("buildToolResult", () => {
 	it("locks the envelope shape", () => {
-		const r = buildToolResult("msg", { question: "q", answer: null });
+		const details: QuestionnaireResult = { answers: [], cancelled: false };
+		const r = buildToolResult("msg", details);
 		expect(r).toEqual({
 			content: [{ type: "text", text: "msg" }],
-			details: { question: "q", answer: null },
+			details: { answers: [], cancelled: false },
 		});
 	});
 
-	it("passes details reference through (no clone)", () => {
-		const details = { question: "q", answer: "a" };
+	it("passes details by reference (no clone)", () => {
+		const details: QuestionnaireResult = { answers: [], cancelled: true };
 		const r = buildToolResult("msg", details);
 		expect(r.details).toBe(details);
+	});
+
+	it("accepts error field in envelope", () => {
+		const details: QuestionnaireResult = { answers: [], cancelled: true, error: "no_questions" };
+		const r = buildToolResult("msg", details);
+		expect(r).toEqual({
+			content: [{ type: "text", text: "msg" }],
+			details: { answers: [], cancelled: true, error: "no_questions" },
+		});
 	});
 });

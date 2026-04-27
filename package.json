@@ -29,6 +29,12 @@
     "index.ts",
     "ask-user-question.ts",
     "wrapping-select.ts",
+    "types.ts",
+    "columns.ts",
+    "tab-bar.ts",
+    "preview-pane.ts",
+    "dispatch.ts",
+    "dialog-builder.ts",
     "README.md",
     "LICENSE"
   ],

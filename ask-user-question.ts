@@ -1,279 +1,373 @@
-import { DynamicBorder, type ExtensionAPI, type Theme } from "@mariozechner/pi-coding-agent";
-import { Container, getKeybindings, Spacer, Text } from "@mariozechner/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { type ExtensionAPI, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
+import { getKeybindings, Input } from "@mariozechner/pi-tui";
+import { buildDialog, type DialogState } from "./dialog-builder.js";
+import { handleQuestionnaireInput, type QuestionnaireDispatchState } from "./dispatch.js";
+import { PreviewPane } from "./preview-pane.js";
+import { TabBar } from "./tab-bar.js";
+import {
+	MAX_QUESTIONS,
+	type QuestionAnswer,
+	type QuestionData,
+	type QuestionnaireResult,
+	type QuestionParams,
+	QuestionParamsSchema,
+} from "./types.js";
 import { WrappingSelect, type WrappingSelectItem, type WrappingSelectTheme } from "./wrapping-select.js";
-
-const MAX_VISIBLE_ROWS = 10;
 
 const TYPE_SOMETHING_LABEL = "Type something.";
 const CHAT_ABOUT_THIS_LABEL = "Chat about this";
-const NAV_HINT = "Enter to select · ↑/↓ to navigate · Esc to cancel";
-
 const DECLINE_MESSAGE = "User declined to answer questions";
 const CHAT_CONTINUATION_MESSAGE = "User wants to chat about this. Continue the conversation to help them decide.";
-const CHAT_ANSWER_TAG = "User wants to chat about this";
 const NO_INPUT_PLACEHOLDER = "(no input)";
 const ERROR_NO_UI = "Error: UI not available (running in non-interactive mode)";
-const ERROR_NO_OPTIONS = "Error: No options provided";
-
-const KEYBIND_UP = "tui.select.up";
-const KEYBIND_DOWN = "tui.select.down";
-const KEYBIND_CONFIRM = "tui.select.confirm";
-const KEYBIND_CANCEL = "tui.select.cancel";
+const ERROR_NO_OPTIONS = "Error: One or more questions have no options";
+const ERROR_TOO_MANY_QUESTIONS = `Error: At most ${MAX_QUESTIONS} questions are allowed per invocation`;
+const ERROR_NO_QUESTIONS = "Error: At least one question is required";
 
 const BACKSPACE_CHARS = new Set(["\x7f", "\b"]);
 const ESC_SEQUENCE_PREFIX = "\x1b";
 
-interface QuestionOption {
-	label: string;
-	description?: string;
-}
-
-interface QuestionParams {
-	question: string;
-	header?: string;
-	options: QuestionOption[];
-}
-
-interface ToolDetails {
-	question: string;
-	answer: string | null;
-	wasCustom?: boolean;
-	wasChat?: boolean;
+export function buildItemsForQuestion(question: QuestionData): WrappingSelectItem[] {
+	const items = question.options.map((o) => ({ label: o.label, description: o.description }));
+	if (question.multiSelect) return items;
+	return [...items, { label: TYPE_SOMETHING_LABEL, isOther: true }];
 }
 
 export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
-	const OptionSchema = Type.Object({
-		label: Type.String({ description: "Display label for the option" }),
-		description: Type.Optional(Type.String({ description: "Optional description shown below label" })),
-	});
-
 	pi.registerTool({
 		name: "ask_user_question",
 		label: "Ask User Question",
 		description:
-			"Ask the user a structured question with selectable options. Use when you need user input to proceed — choosing between approaches, confirming scope, resolving ambiguities. The user can also type a custom answer.",
-		promptSnippet: "Ask the user a structured question when requirements are ambiguous",
+			"Ask the user one or more structured questions. Use when you need user input to proceed — " +
+			"choosing between approaches, confirming scope, resolving ambiguities. Each question can be " +
+			"single-select (one answer), multi-select (checkbox-style), or include a side-by-side markdown " +
+			"`preview` per option. The user can also type a custom answer or chat about a question.",
+		promptSnippet:
+			"Ask the user one or more structured questions when requirements are ambiguous (1–4 questions per call)",
 		promptGuidelines: [
-			"Use the ask_user_question tool whenever the user's request is underspecified and you cannot proceed without a concrete decision.",
-			"Prefer ask_user_question over prose 'please tell me X' — the structured selector gives the user concrete options and records their choice in session history.",
-			"This replaces the AskUserQuestion tool from Claude Code. The user can always pick 'Other (type your own answer)' for free-text input.",
+			"Use ask_user_question whenever the user's request is underspecified and you cannot proceed without concrete decisions — you can ask up to 4 questions in a single invocation.",
+			"Each question MUST have at least one option; the user can also type a custom answer (sentinel option auto-appended) or pick 'Chat about this' to switch to free-form conversation.",
+			"Set `multiSelect: true` on a question when multiple answers are valid. Provide an `options[].preview` markdown string when an option deserves richer side-by-side context (Architecture / scope-trade-off questions).",
+			"This replaces the AskUserQuestion tool from Claude Code. Do not stack multiple ask_user_question calls back-to-back — group all clarifying questions into one invocation when possible.",
 		],
-		parameters: Type.Object({
-			question: Type.String({ description: "The question to ask the user" }),
-			header: Type.Optional(Type.String({ description: "Section header for the question" })),
-			options: Type.Array(OptionSchema, { description: "Options for the user to choose from" }),
-			multiSelect: Type.Optional(
-				Type.Boolean({ description: "Allow multiple selections. Default: false", default: false }),
-			),
-		}),
+		parameters: QuestionParamsSchema,
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			if (!ctx.hasUI) return buildToolResult(ERROR_NO_UI, { question: params.question, answer: null });
-			if (params.options.length === 0)
-				return buildToolResult(ERROR_NO_OPTIONS, { question: params.question, answer: null });
+			const typed = params as unknown as QuestionParams;
+			if (!ctx.hasUI) return buildToolResult(ERROR_NO_UI, { answers: [], cancelled: true, error: "no_ui" });
+			if (typed.questions.length === 0)
+				return buildToolResult(ERROR_NO_QUESTIONS, { answers: [], cancelled: true, error: "no_questions" });
+			if (typed.questions.length > MAX_QUESTIONS)
+				return buildToolResult(ERROR_TOO_MANY_QUESTIONS, {
+					answers: [],
+					cancelled: true,
+					error: "too_many_questions",
+				});
+			for (const q of typed.questions) {
+				if (q.options.length === 0)
+					return buildToolResult(ERROR_NO_OPTIONS, { answers: [], cancelled: true, error: "empty_options" });
+			}
 
-			const mainItems = buildMainItems(params.options);
-			const chatItems: WrappingSelectItem[] = [{ label: CHAT_ABOUT_THIS_LABEL, isChat: true }];
-			const totalCount = mainItems.length + chatItems.length;
+			const questions = typed.questions;
+			const isMulti = questions.length > 1;
+			const itemsByTab: WrappingSelectItem[][] = questions.map((q) => buildItemsForQuestion(q));
 
-			const choice = await ctx.ui.custom<WrappingSelectItem | null>((tui, theme, _kb, done) => {
+			const result = await ctx.ui.custom<QuestionnaireResult>((tui, theme, _kb, done) => {
 				const selectTheme: WrappingSelectTheme = {
 					selectedText: (t) => theme.fg("accent", theme.bold(t)),
 					description: (t) => theme.fg("muted", t),
 					scrollInfo: (t) => theme.fg("dim", t),
 				};
+				const chatList = new WrappingSelect([{ label: CHAT_ABOUT_THIS_LABEL, isChat: true }], 1, selectTheme);
+				const notesInput = new Input();
+				const markdownTheme = getMarkdownTheme();
+				const getTerminalWidth = () => tui.terminal.columns;
 
-				const mainList = new WrappingSelect(mainItems, Math.min(mainItems.length, MAX_VISIBLE_ROWS), selectTheme, {
-					totalItemsForNumbering: totalCount,
-				});
-				const chatList = new WrappingSelect(chatItems, 1, selectTheme, {
-					numberStartOffset: mainItems.length,
-					totalItemsForNumbering: totalCount,
-				});
+				const previewPanes: PreviewPane[] = questions.map(
+					(q, i) =>
+						new PreviewPane({
+							items: itemsByTab[i],
+							question: q,
+							theme,
+							markdownTheme,
+							getTerminalWidth,
+						}),
+				);
 
-				let selectionIndex = 0;
-				const applySelection = () => {
-					const isInMainList = selectionIndex < mainItems.length;
-					mainList.setFocused(isInMainList);
-					chatList.setFocused(!isInMainList);
-					if (isInMainList) {
-						mainList.setSelectedIndex(selectionIndex);
-					} else {
-						chatList.setSelectedIndex(selectionIndex - mainItems.length);
-					}
+				const tabBar: TabBar | undefined = isMulti
+					? new TabBar(
+							{
+								questions,
+								answers: new Map(),
+								activeTabIndex: 0,
+								totalTabs: questions.length + 1,
+							},
+							theme,
+						)
+					: undefined;
+
+				let currentTab = 0;
+				let optionIndex = 0;
+				let inputMode = false;
+				let notesMode = false;
+				const answers = new Map<number, QuestionAnswer>();
+				let multiSelectChecked = new Set<number>();
+
+				const items = (): WrappingSelectItem[] => itemsByTab[currentTab] ?? [];
+				const currentItem = (): WrappingSelectItem | undefined => {
+					const arr = items();
+					if (optionIndex < arr.length) return arr[optionIndex];
+					return { label: CHAT_ABOUT_THIS_LABEL, isChat: true };
 				};
-				applySelection();
 
-				const container = buildDialogContainer(theme, params, mainList, chatList);
+				function snapshotState(): DialogState {
+					return {
+						currentTab,
+						optionIndex,
+						notesVisible: notesMode,
+						inputMode,
+						answers: new Map(answers),
+						multiSelectChecked: new Set(multiSelectChecked),
+					};
+				}
 
-				return {
-					render: (w) => container.render(w),
-					invalidate: () => container.invalidate(),
-					handleInput: (data) => {
-						const currentItem = itemAt(selectionIndex, mainItems, chatItems);
-						const isInlineInputActive = !!currentItem?.isOther;
-						const action = dispatchQuestionInput(data, {
-							selectionIndex,
-							totalCount,
-							currentItem,
-							isInlineInputActive,
-							inputBuffer: mainList.getInputBuffer(),
-							keybindings: getKeybindings(),
+				const dialog = buildDialog({
+					theme,
+					questions,
+					state: snapshotState(),
+					previewPane: previewPanes[0],
+					tabBar,
+					notesInput,
+					chatList,
+					isMulti,
+				});
+
+				const component = {
+					render: (w: number) => dialog.render(w),
+					invalidate: () => dialog.invalidate(),
+					handleInput: (data: string) => onInput(data),
+				};
+
+				function refreshDialog() {
+					dialog.setState(snapshotState());
+					applySelection();
+					tui.requestRender();
+				}
+
+				function applySelection() {
+					const pane = previewPanes[Math.min(currentTab, questions.length - 1)] ?? previewPanes[0];
+					pane.setSelectedIndex(optionIndex);
+					pane.setFocused(!notesMode);
+					if (tabBar) {
+						tabBar.setConfig({
+							questions,
+							answers: new Map(answers),
+							activeTabIndex: currentTab,
+							totalTabs: questions.length + 1,
 						});
-						switch (action.kind) {
-							case "nav":
-								if (isInlineInputActive) mainList.clearInputBuffer();
-								selectionIndex = action.nextIndex;
-								applySelection();
-								tui.requestRender();
-								return;
-							case "confirm":
-								done(action.choice);
-								return;
-							case "cancel":
-								done(null);
-								return;
-							case "backspace":
-								mainList.backspaceInput();
-								tui.requestRender();
-								return;
-							case "append":
-								mainList.appendInput(action.data);
-								tui.requestRender();
-								return;
-							case "ignore":
-								return;
+					}
+				}
+
+				function syncMultiSelectFromAnswers() {
+					const q = questions[currentTab];
+					if (!q?.multiSelect) {
+						multiSelectChecked = new Set();
+						return;
+					}
+					const saved = answers.get(currentTab);
+					const labels = saved?.selected ?? [];
+					const indices = new Set<number>();
+					for (let i = 0; i < q.options.length; i++) {
+						if (labels.includes(q.options[i].label)) indices.add(i);
+					}
+					multiSelectChecked = indices;
+				}
+
+				function switchTab(nextTab: number) {
+					currentTab = nextTab;
+					optionIndex = 0;
+					inputMode = false;
+					notesMode = false;
+					notesInput.focused = false;
+					notesInput.setValue(answers.get(currentTab)?.notes ?? "");
+					syncMultiSelectFromAnswers();
+					const paneIndex = Math.min(currentTab, questions.length - 1);
+					const nextPane = previewPanes[paneIndex] ?? previewPanes[0];
+					dialog.setPreviewPane(nextPane);
+					dialog.setState(snapshotState());
+					refreshDialog();
+				}
+
+				function submitFinal() {
+					done({ answers: orderedAnswers(), cancelled: false });
+				}
+
+				function cancel() {
+					done({ answers: orderedAnswers(), cancelled: true });
+				}
+
+				function orderedAnswers(): QuestionAnswer[] {
+					const out: QuestionAnswer[] = [];
+					for (let i = 0; i < questions.length; i++) {
+						const a = answers.get(i);
+						if (a) out.push(a);
+					}
+					return out;
+				}
+
+				function onInput(data: string) {
+					if (notesMode) {
+						const preAction = handleQuestionnaireInput(data, dispatchSnapshot());
+						if (preAction.kind === "notes_exit") {
+							commitNotes();
+							notesMode = false;
+							notesInput.focused = false;
+							refreshDialog();
+							return;
 						}
-					},
-				};
+						notesInput.handleInput(data);
+						tui.requestRender();
+						return;
+					}
+
+					const action = handleQuestionnaireInput(data, dispatchSnapshot());
+					switch (action.kind) {
+						case "nav":
+							optionIndex = action.nextIndex;
+							inputMode = !!currentItem()?.isOther;
+							if (!inputMode) {
+								previewPanes[currentTab]?.clearInputBuffer();
+							}
+							refreshDialog();
+							return;
+						case "tab_switch":
+							switchTab(action.nextTab);
+							return;
+						case "confirm":
+							answers.set(action.answer.questionIndex, action.answer);
+							if (action.autoAdvanceTab !== undefined) {
+								switchTab(action.autoAdvanceTab);
+							} else {
+								submitFinal();
+							}
+							return;
+						case "toggle":
+							if (multiSelectChecked.has(action.index)) multiSelectChecked.delete(action.index);
+							else multiSelectChecked.add(action.index);
+							refreshDialog();
+							return;
+						case "multi_confirm": {
+							const q = questions[currentTab];
+							if (!q) return;
+							answers.set(currentTab, {
+								questionIndex: currentTab,
+								question: q.question,
+								answer: null,
+								selected: action.selected,
+							});
+							syncMultiSelectFromAnswers();
+							refreshDialog();
+							return;
+						}
+						case "cancel":
+							cancel();
+							return;
+						case "notes_enter":
+							notesMode = true;
+							notesInput.focused = true;
+							notesInput.setValue(answers.get(currentTab)?.notes ?? "");
+							refreshDialog();
+							return;
+						case "notes_exit":
+							commitNotes();
+							notesMode = false;
+							notesInput.focused = false;
+							refreshDialog();
+							return;
+						case "submit":
+							submitFinal();
+							return;
+						case "ignore":
+							if (inputMode) {
+								const pane = previewPanes[currentTab];
+								if (!pane) return;
+								if (BACKSPACE_CHARS.has(data)) {
+									pane.backspaceInput();
+									tui.requestRender();
+								} else if (data && !data.startsWith(ESC_SEQUENCE_PREFIX)) {
+									pane.appendInput(data);
+									tui.requestRender();
+								}
+							}
+							return;
+					}
+				}
+
+				function commitNotes() {
+					const trimmed = notesInput.getValue().trim();
+					const q = questions[currentTab];
+					if (!q) return;
+					const prev = answers.get(currentTab);
+					if (!prev) return;
+					const next: QuestionAnswer = trimmed.length > 0 ? { ...prev, notes: trimmed } : { ...prev };
+					if (trimmed.length === 0 && "notes" in next) delete (next as { notes?: string }).notes;
+					answers.set(currentTab, next);
+				}
+
+				function dispatchSnapshot(): QuestionnaireDispatchState {
+					return {
+						currentTab,
+						optionIndex,
+						inputMode,
+						notesMode,
+						answers,
+						multiSelectIndices: multiSelectChecked,
+						questions,
+						isMulti,
+						keybindings: getKeybindings(),
+						currentItem: currentItem(),
+						inputBuffer: previewPanes[currentTab]?.getInputBuffer() ?? "",
+						items: items(),
+					};
+				}
+
+				applySelection();
+				dialog.setState(snapshotState());
+				return component;
 			});
 
-			return buildResponse(choice, params);
+			return buildQuestionnaireResponse(result, typed);
 		},
 	});
 }
 
-export function buildMainItems(options: QuestionOption[]): WrappingSelectItem[] {
-	return [
-		...options.map((o) => ({ label: o.label, description: o.description })),
-		{ label: TYPE_SOMETHING_LABEL, isOther: true },
-	];
-}
-
-export function itemAt(
-	index: number,
-	mainItems: WrappingSelectItem[],
-	chatItems: WrappingSelectItem[],
-): WrappingSelectItem | undefined {
-	return index < mainItems.length ? mainItems[index] : chatItems[index - mainItems.length];
-}
-
-export function wrapIndex(index: number, total: number): number {
-	return ((index % total) + total) % total;
-}
-
-export type QuestionInputAction =
-	| { kind: "nav"; nextIndex: number }
-	| { kind: "confirm"; choice: WrappingSelectItem }
-	| { kind: "cancel" }
-	| { kind: "backspace" }
-	| { kind: "append"; data: string }
-	| { kind: "ignore" };
-
-export interface DispatchState {
-	selectionIndex: number;
-	totalCount: number;
-	currentItem: WrappingSelectItem | undefined;
-	isInlineInputActive: boolean;
-	inputBuffer: string;
-	keybindings: { matches(data: string, name: string): boolean };
-}
-
-export function dispatchQuestionInput(data: string, state: DispatchState): QuestionInputAction {
-	const { keybindings: kb } = state;
-	if (kb.matches(data, KEYBIND_UP)) {
-		return { kind: "nav", nextIndex: wrapIndex(state.selectionIndex - 1, state.totalCount) };
-	}
-	if (kb.matches(data, KEYBIND_DOWN)) {
-		return { kind: "nav", nextIndex: wrapIndex(state.selectionIndex + 1, state.totalCount) };
-	}
-	if (kb.matches(data, KEYBIND_CONFIRM)) {
-		if (state.isInlineInputActive) {
-			return { kind: "confirm", choice: { label: state.inputBuffer, isOther: true } };
-		}
-		if (state.currentItem) {
-			return { kind: "confirm", choice: state.currentItem };
-		}
-		return { kind: "ignore" };
-	}
-	if (kb.matches(data, KEYBIND_CANCEL)) {
-		return { kind: "cancel" };
-	}
-	if (state.isInlineInputActive) {
-		if (BACKSPACE_CHARS.has(data)) {
-			return { kind: "backspace" };
-		}
-		if (data && !data.startsWith(ESC_SEQUENCE_PREFIX)) {
-			return { kind: "append", data };
-		}
-	}
-	return { kind: "ignore" };
-}
-
-export function buildDialogContainer(
-	theme: Theme,
-	params: QuestionParams,
-	mainList: WrappingSelect,
-	chatList: WrappingSelect,
-): Container {
-	const container = new Container();
-	const border = () => new DynamicBorder((s: string) => theme.fg("accent", s));
-
-	container.addChild(border());
-	container.addChild(new Spacer(1));
-	if (params.header) {
-		container.addChild(new Text(theme.bg("selectedBg", ` ${params.header} `), 1, 0));
-		container.addChild(new Spacer(1));
-	}
-	container.addChild(new Text(theme.bold(params.question), 1, 0));
-	container.addChild(new Spacer(1));
-	container.addChild(mainList);
-	container.addChild(new Spacer(1));
-	container.addChild(border());
-	container.addChild(chatList);
-	container.addChild(new Spacer(1));
-	container.addChild(new Text(theme.fg("dim", NAV_HINT), 1, 0));
-	return container;
-}
-
-export function buildResponse(choice: WrappingSelectItem | null, params: QuestionParams) {
-	if (!choice) {
-		return buildToolResult(DECLINE_MESSAGE, { question: params.question, answer: null });
-	}
-	if (choice.isOther) {
-		const customAnswer = choice.label.length > 0 ? choice.label : null;
-		return buildToolResult(`User answered: ${customAnswer ?? NO_INPUT_PLACEHOLDER}`, {
-			question: params.question,
-			answer: customAnswer,
-			wasCustom: true,
+export function buildQuestionnaireResponse(result: QuestionnaireResult | null | undefined, params: QuestionParams) {
+	if (!result || result.cancelled) {
+		return buildToolResult(DECLINE_MESSAGE, {
+			answers: result?.answers ?? [],
+			cancelled: true,
 		});
 	}
-	if (choice.isChat) {
-		return buildToolResult(CHAT_CONTINUATION_MESSAGE, {
-			question: params.question,
-			answer: CHAT_ANSWER_TAG,
-			wasChat: true,
-		});
+	const lines: string[] = [];
+	for (let i = 0; i < params.questions.length; i++) {
+		const a = result.answers.find((x) => x.questionIndex === i);
+		if (!a) continue;
+		const header = params.questions[i].header;
+		const label = header && header.length > 0 ? header : `Q${i + 1}`;
+		lines.push(`${label}: ${formatAnswerText(a)}`);
 	}
-	return buildToolResult(`User selected: ${choice.label}`, {
-		question: params.question,
-		answer: choice.label,
-		wasCustom: false,
-	});
+	if (lines.length === 0) return buildToolResult(DECLINE_MESSAGE, { answers: result.answers, cancelled: true });
+	return buildToolResult(lines.join("\n"), result);
 }
 
-export function buildToolResult(text: string, details: ToolDetails) {
+function formatAnswerText(a: QuestionAnswer): string {
+	if (a.wasChat) return CHAT_CONTINUATION_MESSAGE;
+	if (a.selected && a.selected.length > 0) return `User selected: ${a.selected.join(", ")}`;
+	if (a.wasCustom) return `User answered: ${a.answer && a.answer.length > 0 ? a.answer : NO_INPUT_PLACEHOLDER}`;
+	return `User selected: ${a.answer ?? NO_INPUT_PLACEHOLDER}`;
+}
+
+export function buildToolResult(text: string, details: QuestionnaireResult) {
 	return {
 		content: [{ type: "text" as const, text }],
 		details,

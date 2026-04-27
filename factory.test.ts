@@ -21,19 +21,17 @@ function register() {
 	return captured.tools.get("ask_user_question")!;
 }
 
-// Drives ctx.ui.custom with a real factory invocation, then calls `script(component, done)`
-// to exercise render + handleInput. `done` resolves the promise that the tool awaits.
 function driveCustom(script: (c: RenderableComponent, done: (v: unknown) => void) => void) {
 	const requestRender = vi.fn();
 	const custom = vi.fn((factory: unknown) => {
 		return new Promise((resolve) => {
 			const f = factory as (
-				tui: { requestRender: () => void },
+				tui: { requestRender: () => void; terminal: { columns: number } },
 				theme: typeof identityTheme,
 				kb: undefined,
 				done: (v: unknown) => void,
 			) => RenderableComponent;
-			const component = f({ requestRender }, identityTheme, undefined, resolve);
+			const component = f({ requestRender, terminal: { columns: 80 } }, identityTheme, undefined, resolve);
 			script(component, resolve);
 		});
 	});
@@ -41,9 +39,13 @@ function driveCustom(script: (c: RenderableComponent, done: (v: unknown) => void
 }
 
 const params = {
-	question: "Pick one",
-	header: "HDR",
-	options: [{ label: "A" }, { label: "B" }],
+	questions: [
+		{
+			question: "Pick one",
+			header: "HDR",
+			options: [{ label: "A" }, { label: "B" }],
+		},
+	],
 };
 
 beforeEach(() => {});
@@ -57,23 +59,35 @@ describe("ask_user_question — factory driver (real pi-tui keybindings)", () =>
 		const { custom } = driveCustom((c, done) => {
 			const lines = c.render(80);
 			expect(lines.length).toBeGreaterThan(0);
-			done(null);
+			done({ answers: [], cancelled: true });
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
 		await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
 	});
 
-	it("Esc cancels → returns decline envelope", async () => {
+	it("Esc cancels → returns decline envelope with cancelled=true", async () => {
 		const tool = register();
 		const { custom } = driveCustom((c) => {
 			c.handleInput("\u001b");
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
 		const r = await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
-		expect(r?.details).toMatchObject({ answer: null });
+		expect(r?.details).toMatchObject({ cancelled: true });
 	});
 
-	it("DOWN navigates without completing; then Esc cancels", async () => {
+	it("Enter on first item → single-question auto-submits", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput("\r");
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
+		const details = r?.details as { cancelled: boolean; answers: Array<Record<string, unknown>> };
+		expect(details).toMatchObject({ cancelled: false });
+		expect(details.answers[0]).toMatchObject({ answer: "A", wasCustom: false });
+	});
+
+	it("DOWN navigates without completing; Esc cancels", async () => {
 		const tool = register();
 		const { custom, requestRender } = driveCustom((c) => {
 			c.handleInput("\u001b[B");
@@ -82,78 +96,13 @@ describe("ask_user_question — factory driver (real pi-tui keybindings)", () =>
 		const ctx = { hasUI: true, ui: { custom } } as never;
 		await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
 		expect(requestRender).toHaveBeenCalled();
-	});
-
-	it("UP wraps from first to last, then Esc", async () => {
-		const tool = register();
-		const { custom, requestRender } = driveCustom((c) => {
-			c.handleInput("\u001b[A");
-			c.handleInput("\u001b");
-		});
-		const ctx = { hasUI: true, ui: { custom } } as never;
-		await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
-		expect(requestRender).toHaveBeenCalled();
-	});
-
-	it("Enter on first item confirms with that label", async () => {
-		const tool = register();
-		const { custom } = driveCustom((c) => {
-			c.handleInput("\r");
-		});
-		const ctx = { hasUI: true, ui: { custom } } as never;
-		const r = await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
-		expect(r?.details).toMatchObject({ answer: "A", wasCustom: false });
-	});
-
-	it("inline-input: type then Enter returns a custom answer", async () => {
-		const tool = register();
-		const { custom } = driveCustom((c) => {
-			// Options A, B, then 'Type something.' (isOther). Chat row is last. Navigate to isOther.
-			c.handleInput("\u001b[B"); // A -> B
-			c.handleInput("\u001b[B"); // B -> Type something (isOther)
-			c.handleInput("h");
-			c.handleInput("i");
-			c.handleInput("\r");
-		});
-		const ctx = { hasUI: true, ui: { custom } } as never;
-		const r = await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
-		expect(r?.details).toMatchObject({ answer: "hi", wasCustom: true });
-	});
-
-	it("inline-input: backspace removes a char before Enter", async () => {
-		const tool = register();
-		const { custom } = driveCustom((c) => {
-			c.handleInput("\u001b[B");
-			c.handleInput("\u001b[B");
-			c.handleInput("a");
-			c.handleInput("b");
-			c.handleInput("\x7f");
-			c.handleInput("\r");
-		});
-		const ctx = { hasUI: true, ui: { custom } } as never;
-		const r = await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
-		expect(r?.details).toMatchObject({ answer: "a", wasCustom: true });
-	});
-
-	it("navigating to chat row + Enter yields wasChat envelope", async () => {
-		const tool = register();
-		const { custom } = driveCustom((c) => {
-			// A -> B -> Type something -> Chat (4 DOWNs from index 0)
-			c.handleInput("\u001b[B");
-			c.handleInput("\u001b[B");
-			c.handleInput("\u001b[B");
-			c.handleInput("\r");
-		});
-		const ctx = { hasUI: true, ui: { custom } } as never;
-		const r = await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);
-		expect(r?.details).toMatchObject({ wasChat: true });
 	});
 
 	it("invalidate() is callable without throwing", async () => {
 		const tool = register();
 		const { custom } = driveCustom((c, done) => {
 			c.invalidate();
-			done(null);
+			done({ answers: [], cancelled: true });
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;
 		await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx);

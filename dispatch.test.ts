@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { dispatchQuestionInput } from "./ask-user-question.js";
+import { allAnswered, handleQuestionnaireInput, type QuestionnaireDispatchState, wrapTab } from "./dispatch.js";
+import type { QuestionAnswer, QuestionData } from "./types.js";
 import type { WrappingSelectItem } from "./wrapping-select.js";
 
 const KEY = {
@@ -8,118 +9,280 @@ const KEY = {
 	CONFIRM: "tui.select.confirm",
 	CANCEL: "tui.select.cancel",
 };
-
 const sentinel = (name: string) => `<KEY:${name}>`;
+const keybindings = { matches: (data: string, name: string) => data === sentinel(name) };
 
-const keybindings = {
-	matches(data: string, name: string) {
-		return data === sentinel(name);
-	},
-};
+const BYTE_TAB = "\t";
+const BYTE_SHIFT_TAB = "\x1b[Z";
+const BYTE_RIGHT = "\x1b[C";
+const BYTE_LEFT = "\x1b[D";
+const BYTE_SPACE = " ";
 
-const mainA: WrappingSelectItem = { label: "A" };
-const mainB: WrappingSelectItem = { label: "B" };
-const other: WrappingSelectItem = { label: "Type something.", isOther: true };
-const chat: WrappingSelectItem = { label: "Chat about this", isChat: true };
+function makeQuestion(over: Partial<QuestionData> = {}): QuestionData {
+	return {
+		question: over.question ?? "Pick one",
+		header: over.header,
+		options: over.options ?? [{ label: "A" }, { label: "B" }, { label: "C" }],
+		multiSelect: over.multiSelect,
+	};
+}
 
-const baseState = (overrides: Partial<Parameters<typeof dispatchQuestionInput>[1]> = {}) => ({
-	selectionIndex: 0,
-	totalCount: 4, // main = [A, B, other], chat = [chat]
-	currentItem: mainA as WrappingSelectItem | undefined,
-	isInlineInputActive: false,
-	inputBuffer: "",
-	keybindings,
-	...overrides,
+function makeAnswer(over: Partial<QuestionAnswer> = {}): QuestionAnswer {
+	return {
+		questionIndex: over.questionIndex ?? 0,
+		question: over.question ?? "q",
+		answer: over.answer ?? "A",
+		wasCustom: over.wasCustom ?? false,
+	};
+}
+
+function baseState(over: Partial<QuestionnaireDispatchState> = {}): QuestionnaireDispatchState {
+	const questions = over.questions ?? [makeQuestion(), makeQuestion()];
+	const items: WrappingSelectItem[] = questions[0]!.options.map((o) => ({ label: o.label }));
+	return {
+		currentTab: over.currentTab ?? 0,
+		optionIndex: over.optionIndex ?? 0,
+		inputMode: over.inputMode ?? false,
+		notesMode: over.notesMode ?? false,
+		answers: over.answers ?? new Map<number, QuestionAnswer>(),
+		multiSelectIndices: over.multiSelectIndices ?? new Set<number>(),
+		questions,
+		isMulti: over.isMulti ?? questions.length > 1,
+		keybindings: over.keybindings ?? keybindings,
+		currentItem: over.currentItem ?? items[0],
+		inputBuffer: over.inputBuffer ?? "",
+		items: over.items ?? items,
+	};
+}
+
+describe("wrapTab + allAnswered", () => {
+	it("wraps negative + over-max into [0, total)", () => {
+		expect(wrapTab(-1, 3)).toBe(2);
+		expect(wrapTab(3, 3)).toBe(0);
+		expect(wrapTab(0, 0)).toBe(0);
+	});
+
+	it("allAnswered is false when any question lacks an answer", () => {
+		const s = baseState({ answers: new Map([[0, makeAnswer({ questionIndex: 0 })]]) });
+		expect(allAnswered(s)).toBe(false);
+	});
+
+	it("allAnswered is true when every question has an answer", () => {
+		const s = baseState({
+			answers: new Map([
+				[0, makeAnswer({ questionIndex: 0 })],
+				[1, makeAnswer({ questionIndex: 1 })],
+			]),
+		});
+		expect(allAnswered(s)).toBe(true);
+	});
 });
 
-describe("dispatchQuestionInput — navigation", () => {
-	it("UP at index 0 wraps to last", () => {
-		expect(dispatchQuestionInput(sentinel(KEY.UP), baseState())).toEqual({ kind: "nav", nextIndex: 3 });
+describe("handleQuestionnaireInput — nav", () => {
+	it("UP wraps from index 0 to last item", () => {
+		const s = baseState();
+		expect(handleQuestionnaireInput(sentinel(KEY.UP), s)).toEqual({ kind: "nav", nextIndex: s.items.length - 1 });
 	});
-	it("UP at index 3 moves to 2", () => {
-		expect(dispatchQuestionInput(sentinel(KEY.UP), baseState({ selectionIndex: 3 }))).toEqual({
-			kind: "nav",
-			nextIndex: 2,
-		});
-	});
-	it("DOWN at last wraps to 0", () => {
-		expect(dispatchQuestionInput(sentinel(KEY.DOWN), baseState({ selectionIndex: 3 }))).toEqual({
-			kind: "nav",
-			nextIndex: 0,
-		});
-	});
-	it("DOWN at index 0 advances to 1", () => {
-		expect(dispatchQuestionInput(sentinel(KEY.DOWN), baseState())).toEqual({ kind: "nav", nextIndex: 1 });
+	it("DOWN advances by 1", () => {
+		expect(handleQuestionnaireInput(sentinel(KEY.DOWN), baseState())).toEqual({ kind: "nav", nextIndex: 1 });
 	});
 });
 
-describe("dispatchQuestionInput — confirm", () => {
-	it("confirms current non-inline item verbatim", () => {
-		expect(dispatchQuestionInput(sentinel(KEY.CONFIRM), baseState({ currentItem: mainB }))).toEqual({
-			kind: "confirm",
-			choice: mainB,
+describe("handleQuestionnaireInput — tab_switch", () => {
+	it("Tab cycles forward through total tabs (questions + Submit)", () => {
+		const s = baseState();
+		expect(handleQuestionnaireInput(BYTE_TAB, s)).toEqual({ kind: "tab_switch", nextTab: 1 });
+	});
+
+	it("Right is an alias for Tab", () => {
+		expect(handleQuestionnaireInput(BYTE_RIGHT, baseState())).toEqual({ kind: "tab_switch", nextTab: 1 });
+	});
+
+	it("Shift+Tab wraps backward from tab 0 to the Submit tab", () => {
+		const s = baseState({ currentTab: 0 });
+		expect(handleQuestionnaireInput(BYTE_SHIFT_TAB, s)).toEqual({ kind: "tab_switch", nextTab: 2 });
+	});
+
+	it("Left is an alias for Shift+Tab", () => {
+		expect(handleQuestionnaireInput(BYTE_LEFT, baseState({ currentTab: 1 }))).toEqual({
+			kind: "tab_switch",
+			nextTab: 0,
 		});
 	});
-	it("confirms chat item verbatim", () => {
-		expect(dispatchQuestionInput(sentinel(KEY.CONFIRM), baseState({ currentItem: chat }))).toEqual({
+
+	it("Tab is a no-op (returns ignore) in single-question mode", () => {
+		const s = baseState({ isMulti: false, questions: [makeQuestion()] });
+		expect(handleQuestionnaireInput(BYTE_TAB, s)).toEqual({ kind: "ignore" });
+	});
+});
+
+describe("handleQuestionnaireInput — confirm (single-select)", () => {
+	it("emits confirm with autoAdvanceTab pointing to the next tab", () => {
+		const s = baseState({ currentTab: 0 });
+		const action = handleQuestionnaireInput(sentinel(KEY.CONFIRM), s);
+		expect(action).toMatchObject({
 			kind: "confirm",
-			choice: chat,
+			answer: { questionIndex: 0, answer: "A", wasCustom: false },
+			autoAdvanceTab: 1,
 		});
 	});
-	it("confirms inline-input-active with the current buffer tagged isOther", () => {
-		expect(
-			dispatchQuestionInput(
-				sentinel(KEY.CONFIRM),
-				baseState({ currentItem: other, isInlineInputActive: true, inputBuffer: "typed" }),
-			),
-		).toEqual({ kind: "confirm", choice: { label: "typed", isOther: true } });
+
+	it("last question -> autoAdvanceTab points at the Submit tab (questions.length)", () => {
+		const s = baseState({ currentTab: 1 });
+		const action = handleQuestionnaireInput(sentinel(KEY.CONFIRM), s);
+		expect(action).toMatchObject({ kind: "confirm", autoAdvanceTab: 2 });
 	});
-	it("confirms inline-input-active with empty buffer (answer=null signaled downstream)", () => {
-		expect(
-			dispatchQuestionInput(
-				sentinel(KEY.CONFIRM),
-				baseState({ currentItem: other, isInlineInputActive: true, inputBuffer: "" }),
-			),
-		).toEqual({ kind: "confirm", choice: { label: "", isOther: true } });
+
+	it("single-question (!isMulti) -> autoAdvanceTab is undefined (dialog submits)", () => {
+		const questions = [makeQuestion()];
+		const s = baseState({ isMulti: false, questions, items: [{ label: "A" }, { label: "B" }, { label: "C" }] });
+		const action = handleQuestionnaireInput(sentinel(KEY.CONFIRM), s);
+		expect(action).toMatchObject({ kind: "confirm" });
+		if (action.kind === "confirm") {
+			expect(action.autoAdvanceTab).toBeUndefined();
+		}
 	});
-	it("ignores confirm when currentItem is undefined and not inline", () => {
-		expect(dispatchQuestionInput(sentinel(KEY.CONFIRM), baseState({ currentItem: undefined }))).toEqual({
+
+	it("chat sentinel item -> answer.wasChat === true", () => {
+		const chat: WrappingSelectItem = { label: "Chat about this", isChat: true };
+		const s = baseState({ currentItem: chat });
+		const action = handleQuestionnaireInput(sentinel(KEY.CONFIRM), s);
+		expect(action.kind).toBe("confirm");
+		if (action.kind === "confirm") expect(action.answer.wasChat).toBe(true);
+	});
+
+	it("inline-input mode: Enter confirms with the buffered text + wasCustom", () => {
+		const other: WrappingSelectItem = { label: "Type something.", isOther: true };
+		const s = baseState({ inputMode: true, currentItem: other, inputBuffer: "my custom answer" });
+		const action = handleQuestionnaireInput(sentinel(KEY.CONFIRM), s);
+		expect(action.kind).toBe("confirm");
+		if (action.kind === "confirm") {
+			expect(action.answer.answer).toBe("my custom answer");
+			expect(action.answer.wasCustom).toBe(true);
+		}
+	});
+});
+
+describe("handleQuestionnaireInput — multiSelect", () => {
+	const multiQ = makeQuestion({ multiSelect: true, options: [{ label: "FE" }, { label: "BE" }, { label: "Tests" }] });
+
+	it("Space emits toggle for the current optionIndex", () => {
+		const s = baseState({
+			questions: [multiQ],
+			isMulti: false,
+			optionIndex: 1,
+			items: [{ label: "FE" }, { label: "BE" }, { label: "Tests" }],
+			currentItem: { label: "BE" },
+		});
+		expect(handleQuestionnaireInput(BYTE_SPACE, s)).toEqual({ kind: "toggle", index: 1 });
+	});
+
+	it("Enter emits multi_confirm with selected labels in option order", () => {
+		const s = baseState({
+			questions: [multiQ],
+			isMulti: false,
+			items: [{ label: "FE" }, { label: "BE" }, { label: "Tests" }],
+			currentItem: { label: "FE" },
+			multiSelectIndices: new Set([2, 0]),
+		});
+		expect(handleQuestionnaireInput(sentinel(KEY.CONFIRM), s)).toEqual({
+			kind: "multi_confirm",
+			selected: ["FE", "Tests"],
+		});
+	});
+
+	it("Space does NOT emit toggle on a single-select question", () => {
+		const s = baseState();
+		expect(handleQuestionnaireInput(BYTE_SPACE, s)).toEqual({ kind: "ignore" });
+	});
+});
+
+describe("handleQuestionnaireInput — cancel + submit", () => {
+	it("Esc cancels the entire questionnaire from any tab", () => {
+		expect(handleQuestionnaireInput(sentinel(KEY.CANCEL), baseState())).toEqual({ kind: "cancel" });
+		expect(handleQuestionnaireInput(sentinel(KEY.CANCEL), baseState({ currentTab: 2 }))).toEqual({
+			kind: "cancel",
+		});
+	});
+
+	it("Submit tab + Enter + allAnswered -> submit", () => {
+		const s = baseState({
+			currentTab: 2,
+			answers: new Map([
+				[0, makeAnswer({ questionIndex: 0 })],
+				[1, makeAnswer({ questionIndex: 1 })],
+			]),
+		});
+		expect(handleQuestionnaireInput(sentinel(KEY.CONFIRM), s)).toEqual({ kind: "submit" });
+	});
+
+	it("Submit tab + Enter when not allAnswered -> ignore", () => {
+		const s = baseState({
+			currentTab: 2,
+			answers: new Map([[0, makeAnswer({ questionIndex: 0 })]]),
+		});
+		expect(handleQuestionnaireInput(sentinel(KEY.CONFIRM), s)).toEqual({ kind: "ignore" });
+	});
+});
+
+describe("handleQuestionnaireInput — notes", () => {
+	it("'n' on an answered question emits notes_enter", () => {
+		const s = baseState({ answers: new Map([[0, makeAnswer({ questionIndex: 0 })]]) });
+		expect(handleQuestionnaireInput("n", s)).toEqual({ kind: "notes_enter" });
+	});
+
+	it("'n' on an unanswered question is ignored", () => {
+		expect(handleQuestionnaireInput("n", baseState())).toEqual({ kind: "ignore" });
+	});
+
+	it("'n' is ignored on multiSelect questions", () => {
+		const multiQ = makeQuestion({ multiSelect: true });
+		const s = baseState({
+			questions: [multiQ, makeQuestion()],
+			answers: new Map([[0, makeAnswer({ questionIndex: 0 })]]),
+		});
+		expect(handleQuestionnaireInput("n", s)).toEqual({ kind: "ignore" });
+	});
+
+	it("notesMode: Esc -> notes_exit", () => {
+		expect(handleQuestionnaireInput(sentinel(KEY.CANCEL), baseState({ notesMode: true }))).toEqual({
+			kind: "notes_exit",
+		});
+	});
+
+	it("notesMode: Enter -> notes_exit (save + return to options)", () => {
+		expect(handleQuestionnaireInput(sentinel(KEY.CONFIRM), baseState({ notesMode: true }))).toEqual({
+			kind: "notes_exit",
+		});
+	});
+
+	it("notesMode: Tab byte is ignored (input-guard suppresses tab nav)", () => {
+		expect(handleQuestionnaireInput(BYTE_TAB, baseState({ notesMode: true }))).toEqual({ kind: "ignore" });
+	});
+
+	it("notesMode: arbitrary printable byte is ignored (forwarded to Input by dialog)", () => {
+		expect(handleQuestionnaireInput("a", baseState({ notesMode: true }))).toEqual({ kind: "ignore" });
+	});
+});
+
+describe("handleQuestionnaireInput — inputMode (Type something)", () => {
+	const other: WrappingSelectItem = { label: "Type something.", isOther: true };
+
+	it("Tab byte is ignored under inputMode", () => {
+		expect(handleQuestionnaireInput(BYTE_TAB, baseState({ inputMode: true, currentItem: other }))).toEqual({
 			kind: "ignore",
 		});
 	});
-});
 
-describe("dispatchQuestionInput — cancel", () => {
-	it("emits cancel", () => {
-		expect(dispatchQuestionInput(sentinel(KEY.CANCEL), baseState())).toEqual({ kind: "cancel" });
+	it("printable bytes return ignore (dialog forwards to WrappingSelect.appendInput)", () => {
+		expect(handleQuestionnaireInput("x", baseState({ inputMode: true, currentItem: other }))).toEqual({
+			kind: "ignore",
+		});
 	});
-});
 
-describe("dispatchQuestionInput — inline input", () => {
-	const inline = baseState({ currentItem: other, isInlineInputActive: true });
-
-	it("DEL byte \\x7f is a backspace", () => {
-		expect(dispatchQuestionInput("\x7f", inline)).toEqual({ kind: "backspace" });
-	});
-	it("BS byte \\b is a backspace", () => {
-		expect(dispatchQuestionInput("\b", inline)).toEqual({ kind: "backspace" });
-	});
-	it("printable data is appended", () => {
-		expect(dispatchQuestionInput("x", inline)).toEqual({ kind: "append", data: "x" });
-	});
-	it("ESC-prefixed sequence is ignored", () => {
-		expect(dispatchQuestionInput("\x1b[A", inline)).toEqual({ kind: "ignore" });
-	});
-	it("empty string is ignored", () => {
-		expect(dispatchQuestionInput("", inline)).toEqual({ kind: "ignore" });
-	});
-});
-
-describe("dispatchQuestionInput — non-inline fallthrough", () => {
-	it("ignores arbitrary non-matching bytes", () => {
-		expect(dispatchQuestionInput("q", baseState())).toEqual({ kind: "ignore" });
-	});
-	it("ignores backspace when inline input is NOT active", () => {
-		expect(dispatchQuestionInput("\x7f", baseState())).toEqual({ kind: "ignore" });
+	it("Esc cancels the questionnaire even in inputMode", () => {
+		expect(
+			handleQuestionnaireInput(sentinel(KEY.CANCEL), baseState({ inputMode: true, currentItem: other })),
+		).toEqual({ kind: "cancel" });
 	});
 });
