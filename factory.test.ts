@@ -172,14 +172,15 @@ describe("ask_user_question — single-question navigation", () => {
 		expect(r?.details.answers[0].answer).toBe("Beta");
 	});
 
-	it("UP wraps from Alpha past last option through chat back to Gamma", async () => {
+	it("UP from Alpha cycles through chat → Type-something → Gamma", async () => {
 		const tool = register();
 		const { custom } = driveCustom((c) => {
-			// Items = [Alpha, Beta, Gamma, "Type something."] (index 3 = Other sentinel)
-			c.handleInput(KEY.UP); // wraps to last (Type something, inputMode=true)
-			c.handleInput(KEY.DOWN); // → focus_chat
-			c.handleInput(KEY.UP); // → focus_options (back to Type something)
-			c.handleInput(KEY.UP); // → Gamma (index 2)
+			// Items = [Alpha, Beta, Gamma, "Type something."] — chat is the virtual extra row
+			// at the top of the cycle. UP at index 0 wraps INTO chat; UP from chat lands on
+			// items.length-1 (Type something); UP from there decrements to Gamma.
+			c.handleInput(KEY.UP); // Alpha (0) → focus_chat
+			c.handleInput(KEY.UP); // chat → focus_options at index 3 (Type something, inputMode)
+			c.handleInput(KEY.UP); // Type something (3) → Gamma (2)
 			c.handleInput(KEY.ENTER); // confirm Gamma
 		});
 		const ctx = { hasUI: true, ui: { custom } } as never;

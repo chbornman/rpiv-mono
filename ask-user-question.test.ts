@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildItemsForQuestion, buildQuestionnaireResponse, buildToolResult } from "./ask-user-question.js";
+import {
+	buildItemsForQuestion,
+	buildQuestionnaireResponse,
+	buildToolResult,
+	chatNumberingFor,
+} from "./ask-user-question.js";
 import type { QuestionnaireResult, QuestionParams } from "./types.js";
 
 describe("buildItemsForQuestion", () => {
@@ -107,6 +112,57 @@ describe("buildItemsForQuestion", () => {
 			{ label: "Next", isNext: true },
 		]);
 		expect(items.some((i) => i.isOther)).toBe(false);
+	});
+});
+
+describe("chatNumberingFor", () => {
+	// Single-select items already include the `Type something.` row, which IS a numbered
+	// (visible-numbered) row in MultiSelectOptions/WrappingSelect, so the chat row that
+	// follows simply continues the count: 2 options + Type-something = 3 → chat is 4.
+	it("single-select with Type-something: chat number continues past the Type-something row", () => {
+		const items = buildItemsForQuestion({
+			question: "q",
+			header: "H",
+			options: [
+				{ label: "A", description: "a" },
+				{ label: "B", description: "b" },
+			],
+		});
+		expect(chatNumberingFor(items)).toEqual({ offset: 3, total: 4 });
+	});
+
+	// Defect 1: Multi-select tabs render 4 visible-numbered rows (1-4) followed by the
+	// un-numbered Next sentinel. The chat row should therefore display "5." — i.e. the
+	// numbering MUST exclude `isNext` rows so chat continues the *visible* numbered
+	// sequence rather than the raw items.length.
+	it("multi-select: chat number excludes the Next sentinel from the numbered count", () => {
+		const items = buildItemsForQuestion({
+			question: "Pick areas",
+			header: "Areas",
+			multiSelect: true,
+			options: [
+				{ label: "Unit tests", description: "U" },
+				{ label: "Integration tests", description: "I" },
+				{ label: "Contract tests", description: "C" },
+				{ label: "Manual QA", description: "M" },
+			],
+		});
+		// 4 numbered rows + Next sentinel (un-numbered) → chat must read "5.", not "6.".
+		expect(chatNumberingFor(items)).toEqual({ offset: 4, total: 5 });
+	});
+
+	// Side-by-side preview layout suppresses Type-something, so 3 options → chat is "4.".
+	it("preview-layout single-select (no Type-something): chat number = options.length + 1", () => {
+		const items = buildItemsForQuestion({
+			question: "Layout?",
+			header: "Layout",
+			options: [
+				{ label: "Centered", description: "centered logo", preview: "## Centered" },
+				{ label: "Left", description: "left logo" },
+				{ label: "Right", description: "right logo" },
+			],
+		});
+		expect(chatNumberingFor(items)).toEqual({ offset: 3, total: 4 });
 	});
 });
 

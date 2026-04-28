@@ -40,6 +40,24 @@ const RESERVED_LABEL_SET: ReadonlySet<string> = new Set(RESERVED_LABELS);
 const BACKSPACE_CHARS = new Set(["\x7f", "\b"]);
 const ESC_SEQUENCE_PREFIX = "\x1b";
 
+/**
+ * Numbering for the chat row's WrappingSelect, computed from the active tab's items.
+ *
+ * The chat row lives in its own one-item WrappingSelect; the host calls this on every tab
+ * switch / selection update to keep the chat row's `N. ` label continuous with the visible
+ * numbered rows of the active tab. The shape `{ offset, total }` mirrors `WrappingSelect.setNumbering(numberStartOffset, totalItemsForNumbering)` directly.
+ */
+export function chatNumberingFor(items: readonly WrappingSelectItem[]): {
+	offset: number;
+	total: number;
+} {
+	// Count only the visible-numbered rows. The Next sentinel renders without a number
+	// (see MultiSelectOptions), so it must NOT advance the chat row's number — otherwise
+	// chat reads as "6." next to options labeled 1-4.
+	const count = items.filter((i) => !i.isNext).length;
+	return { offset: count, total: count + 1 };
+}
+
 export function buildItemsForQuestion(question: QuestionData): WrappingSelectItem[] {
 	const items = question.options.map((o) => ({ label: o.label, description: o.description }));
 	// Multi-select gets a "Next" sentinel row at the bottom so `Enter` on regular option rows
@@ -306,7 +324,8 @@ Preview content is rendered as markdown in a monospace box. Multi-line text with
 					// Keep the chat row's number aligned with whichever tab is active. The chat row
 					// is always the (last + 1) entry in the logical numbering for that tab.
 					const activeTabItems = itemsByTab[Math.min(currentTab, questions.length - 1)] ?? [];
-					chatList.setNumbering(activeTabItems.length, activeTabItems.length + 1);
+					const chatNumbering = chatNumberingFor(activeTabItems);
+					chatList.setNumbering(chatNumbering.offset, chatNumbering.total);
 					// Multi-select rows now carry their own `N.` numbers (CC parity), so the chat row
 					// continues that contiguous numbering on every tab — no special-case suppression.
 					chatList.setShowNumbering(true);
@@ -506,6 +525,17 @@ Preview content is rendered as markdown in a monospace box. Multi-line text with
 							return;
 						case "focus_options":
 							chatFocused = false;
+							// When the dispatcher carries a target index, update optionIndex too — that
+							// drives the continuous chat ↔ options cycle (DOWN-from-chat → 0,
+							// UP-from-chat → items.length - 1). Without `optionIndex`, focus simply
+							// returns to wherever the user was (legacy contract preserved).
+							if (action.optionIndex !== undefined) {
+								optionIndex = action.optionIndex;
+								inputMode = !!currentItem()?.isOther;
+								if (!inputMode) {
+									previewPanes[currentTab]?.clearInputBuffer();
+								}
+							}
 							refreshDialog();
 							return;
 						case "submit_nav":

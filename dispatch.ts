@@ -22,7 +22,13 @@ export type QuestionnaireAction =
 	| { kind: "submit" }
 	| { kind: "submit_nav"; nextIndex: 0 | 1 }
 	| { kind: "focus_chat" }
-	| { kind: "focus_options" }
+	/**
+	 * Optional `optionIndex` lets the dispatcher tell the host where to land when leaving the
+	 * chat row, so UP/DOWN form a continuous cycle through `[chat, option0, …, optionLast]`
+	 * (Defect 2). When omitted, the host preserves the existing optionIndex (UP-from-chat
+	 * legacy behavior — currently still emitted by some branches and consumers).
+	 */
+	| { kind: "focus_options"; optionIndex?: number }
 	| { kind: "ignore" };
 
 export interface QuestionnaireKeybindings {
@@ -146,12 +152,22 @@ function tabSwitchAction(data: string, state: QuestionnaireDispatchState): Quest
 
 // DOWN navigation helper shared by inputMode and normal nav branches.
 // Emits focus_chat at the boundary (last item) so the host can transfer focus to the chat row
-// without mutating optionIndex — UP-from-chat then restores prior selection.
+// without mutating optionIndex — UP-from-chat then lands on items.length - 1 (continuous cycle).
 function nextNavOnDown(state: QuestionnaireDispatchState): QuestionnaireAction {
 	if (state.items.length > 0 && state.optionIndex === state.items.length - 1) {
 		return { kind: "focus_chat" };
 	}
 	return { kind: "nav", nextIndex: wrapTab(state.optionIndex + 1, Math.max(1, state.items.length)) };
+}
+
+// UP navigation helper, symmetric with nextNavOnDown. At the TOP boundary (optionIndex 0)
+// emits focus_chat so the cycle wraps `[chat, option0, …, optionLast]` — without this, UP at
+// option 0 would skip the chat row entirely (Defect 2). Above the boundary, decrement.
+function prevNavOnUp(state: QuestionnaireDispatchState): QuestionnaireAction {
+	if (state.items.length > 0 && state.optionIndex === 0) {
+		return { kind: "focus_chat" };
+	}
+	return { kind: "nav", nextIndex: wrapTab(state.optionIndex - 1, Math.max(1, state.items.length)) };
 }
 
 export function handleQuestionnaireInput(data: string, state: QuestionnaireDispatchState): QuestionnaireAction {
@@ -170,10 +186,17 @@ export function handleQuestionnaireInput(data: string, state: QuestionnaireDispa
 			if (!answer) return { kind: "ignore" };
 			return { kind: "confirm", answer, autoAdvanceTab: computeAutoAdvanceTab(state) };
 		}
-		if (kb.matches(data, KEYBIND_UP)) return { kind: "focus_options" };
-		// DOWN from the chat row returns focus to the options column. Without this, the chat
-		// row becomes a one-way trap on DOWN, which made it feel unselectable in some flows.
-		if (kb.matches(data, KEYBIND_DOWN)) return { kind: "focus_options" };
+		// Continuous cycle: UP from chat → bottom of options (last navigable row), DOWN from
+		// chat → top of options (option 0). Symmetric with UP-at-top → focus_chat and
+		// DOWN-at-bottom → focus_chat below; together they form one wrapping cycle through
+		// `[chat, option0, …, optionLast]`.
+		if (kb.matches(data, KEYBIND_UP)) {
+			const last = Math.max(0, state.items.length - 1);
+			return { kind: "focus_options", optionIndex: last };
+		}
+		if (kb.matches(data, KEYBIND_DOWN)) {
+			return { kind: "focus_options", optionIndex: 0 };
+		}
 		const tab = tabSwitchAction(data, state);
 		if (tab) return tab;
 		return { kind: "ignore" };
@@ -187,7 +210,7 @@ export function handleQuestionnaireInput(data: string, state: QuestionnaireDispa
 		}
 		if (kb.matches(data, KEYBIND_CANCEL)) return { kind: "cancel" };
 		if (kb.matches(data, KEYBIND_UP)) {
-			return { kind: "nav", nextIndex: wrapTab(state.optionIndex - 1, Math.max(1, state.items.length)) };
+			return prevNavOnUp(state);
 		}
 		if (kb.matches(data, KEYBIND_DOWN)) {
 			return nextNavOnDown(state);
@@ -224,7 +247,7 @@ export function handleQuestionnaireInput(data: string, state: QuestionnaireDispa
 	}
 
 	if (kb.matches(data, KEYBIND_UP)) {
-		return { kind: "nav", nextIndex: wrapTab(state.optionIndex - 1, Math.max(1, state.items.length)) };
+		return prevNavOnUp(state);
 	}
 	if (kb.matches(data, KEYBIND_DOWN)) {
 		return nextNavOnDown(state);

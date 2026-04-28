@@ -86,9 +86,11 @@ describe("wrapTab + allAnswered", () => {
 });
 
 describe("handleQuestionnaireInput — nav", () => {
-	it("UP wraps from index 0 to last item", () => {
-		const s = baseState();
-		expect(handleQuestionnaireInput(sentinel(KEY.UP), s)).toEqual({ kind: "nav", nextIndex: s.items.length - 1 });
+	// Boundary case (UP at optionIndex 0 → focus_chat) is exercised by the chat-inclusive
+	// cycle suite below. Above the top boundary, UP simply decrements.
+	it("UP from a non-zero index decrements by 1", () => {
+		const s = baseState({ optionIndex: 2 });
+		expect(handleQuestionnaireInput(sentinel(KEY.UP), s)).toEqual({ kind: "nav", nextIndex: 1 });
 	});
 	it("DOWN advances by 1", () => {
 		expect(handleQuestionnaireInput(sentinel(KEY.DOWN), baseState())).toEqual({ kind: "nav", nextIndex: 1 });
@@ -450,23 +452,9 @@ describe("handleQuestionnaireInput — chat focus", () => {
 		expect(handleQuestionnaireInput(sentinel(KEY.DOWN), s)).toEqual({ kind: "focus_chat" });
 	});
 
-	it("UP while chatFocused → focus_options", () => {
-		const s = baseState({ chatFocused: true, optionIndex: 1, currentItem: chatItem });
-		expect(handleQuestionnaireInput(sentinel(KEY.UP), s)).toEqual({ kind: "focus_options" });
-	});
-
-	it("UP-on-first (chatFocused: false) still wraps to last item (regression)", () => {
-		const s = baseState({ optionIndex: 0 });
-		expect(handleQuestionnaireInput(sentinel(KEY.UP), s)).toEqual({
-			kind: "nav",
-			nextIndex: s.items.length - 1,
-		});
-	});
-
-	it("DOWN while chatFocused → focus_options (chat row is no longer a one-way trap on DOWN)", () => {
-		const s = baseState({ chatFocused: true, currentItem: chatItem });
-		expect(handleQuestionnaireInput(sentinel(KEY.DOWN), s)).toEqual({ kind: "focus_options" });
-	});
+	// UP / DOWN from the chat row participate in the continuous cycle covered by the
+	// "chat-inclusive cycle (Defect 2)" describe block below — they no longer emit a bare
+	// `focus_options` (that would leave optionIndex frozen at the prior position).
 
 	it.each<[string, string, number]>([
 		["Tab", BYTE_TAB, 1],
@@ -526,5 +514,69 @@ describe("handleQuestionnaireInput — chat focus", () => {
 			focusedOptionHasPreview: true,
 		});
 		expect(handleQuestionnaireInput("n", s)).toEqual({ kind: "ignore" });
+	});
+});
+
+// Defect 2 — UP/DOWN must form a single natural cycle that includes the chat row both ways:
+//   chat → option0 → option1 → … → optionLast → chat → option0 …  (DOWN)
+//   chat ← option0 ← option1 ← … ← optionLast ← chat ← option0 …  (UP)
+//
+// Currently UP at optionIndex 0 wraps to the last option (skips chat), and DOWN/UP from chat
+// emits a bare `focus_options` that leaves optionIndex untouched (so chat → DOWN cycles back
+// to the prior position, not to option 0). These tests pin the EXPECTED behavior — they fail
+// against the current dispatch and will turn green once the fix lands.
+describe("handleQuestionnaireInput — chat-inclusive cycle (Defect 2)", () => {
+	const chatItem: WrappingSelectItem = { label: "Chat about this", isChat: true };
+
+	it("UP at optionIndex 0 (single-select) emits focus_chat — wraps UP into the chat row", () => {
+		const s = baseState({ optionIndex: 0 });
+		expect(handleQuestionnaireInput(sentinel(KEY.UP), s)).toEqual({ kind: "focus_chat" });
+	});
+
+	it("UP at optionIndex 0 (multi-select with Next sentinel) emits focus_chat", () => {
+		const multiQ = makeQuestion({
+			multiSelect: true,
+			options: [
+				{ label: "FE", description: "FE" },
+				{ label: "BE", description: "BE" },
+			],
+		});
+		const items: WrappingSelectItem[] = [{ label: "FE" }, { label: "BE" }, { label: "Next", isNext: true }];
+		const s = baseState({
+			questions: [multiQ],
+			isMulti: false,
+			optionIndex: 0,
+			items,
+			currentItem: items[0],
+		});
+		expect(handleQuestionnaireInput(sentinel(KEY.UP), s)).toEqual({ kind: "focus_chat" });
+	});
+
+	it("DOWN while chatFocused returns to options at index 0 (continuous cycle, not a no-op)", () => {
+		const s = baseState({
+			chatFocused: true,
+			optionIndex: 2,
+			currentItem: chatItem,
+		});
+		// Carries the target index so the host can land on option 0 (top of the cycle)
+		// rather than restoring whatever optionIndex the user left chat from.
+		expect(handleQuestionnaireInput(sentinel(KEY.DOWN), s)).toEqual({
+			kind: "focus_options",
+			optionIndex: 0,
+		});
+	});
+
+	it("UP while chatFocused returns to options at the LAST item (continuous cycle)", () => {
+		const s = baseState({
+			chatFocused: true,
+			optionIndex: 0,
+			currentItem: chatItem,
+		});
+		// items.length - 1 is the last navigable row (Type-something on single-select,
+		// Next sentinel on multi-select). Symmetric with DOWN-from-last → focus_chat.
+		expect(handleQuestionnaireInput(sentinel(KEY.UP), s)).toEqual({
+			kind: "focus_options",
+			optionIndex: s.items.length - 1,
+		});
 	});
 });
