@@ -1,4 +1,4 @@
-import { type Static, Type } from "@sinclair/typebox";
+import { type Static, Type } from "typebox";
 
 export const MAX_QUESTIONS = 4;
 export const MIN_OPTIONS = 2;
