@@ -1,6 +1,17 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { type Component, Container, type Input, Spacer, Text } from "@mariozechner/pi-tui";
-import { type DialogState, INCOMPLETE_WARNING_PREFIX, READY_PROMPT, REVIEW_HEADING } from "./dialog-builder.js";
+import {
+	type DialogState,
+	HINT_PART_CANCEL,
+	HINT_PART_ENTER,
+	HINT_PART_NAV,
+	HINT_PART_NOTES,
+	HINT_PART_TAB,
+	HINT_PART_TOGGLE,
+	INCOMPLETE_WARNING_PREFIX,
+	READY_PROMPT,
+	REVIEW_HEADING,
+} from "./dialog-builder.js";
 import { formatAnswerScalar } from "./format-answer.js";
 import type { MultiSelectOptions } from "./multi-select-options.js";
 import type { PreviewPane } from "./preview-pane.js";
@@ -169,22 +180,22 @@ export class SubmitTabStrategy implements TabStrategy {
 }
 
 /**
- * Build the controls hint line. Order is fixed so HINT_SINGLE / HINT_MULTI remain
- * contiguous substrings of the rendered output:
+ * Build the controls hint line from `HINT_PART_*` phrase tokens. Order is fixed so
+ * `HINT_SINGLE` / `HINT_MULTI` (the constant joins) remain contiguous substrings:
  *
- *   Enter to select · ↑/↓ to navigate                          (← HINT_SINGLE prefix)
- *     [· Space to toggle]                                       (multiSelect only)
- *     [· n to add notes]                                        (single-select + preview-bearing focus)
- *     [· Tab to switch questions]                               (multi-question only)
+ *   Enter to select · ↑/↓ to navigate
+ *     [· Space to toggle]                  (multiSelect only)
+ *     [· n to add notes]                   (single-select + preview-bearing focus)
+ *     [· Tab to switch questions]          (multi-question only)
  *   · Esc to cancel
  */
 export function buildHintText(question: QuestionData | undefined, isMulti: boolean, state: DialogState): string {
-	const parts: string[] = ["Enter to select", "↑/↓ to navigate"];
-	if (question?.multiSelect === true) parts.push("Space to toggle");
+	const parts: string[] = [HINT_PART_ENTER, HINT_PART_NAV];
+	if (question?.multiSelect === true) parts.push(HINT_PART_TOGGLE);
 	if (question && question.multiSelect !== true && state.focusedOptionHasPreview && !state.notesVisible) {
-		parts.push("n to add notes");
+		parts.push(HINT_PART_NOTES);
 	}
-	if (isMulti) parts.push("Tab to switch questions");
-	parts.push("Esc to cancel");
+	if (isMulti) parts.push(HINT_PART_TAB);
+	parts.push(HINT_PART_CANCEL);
 	return parts.join(" · ");
 }

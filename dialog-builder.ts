@@ -9,19 +9,18 @@ import { QuestionTabStrategy, SubmitTabStrategy, type TabStrategy } from "./tab-
 import type { QuestionData } from "./types.js";
 import type { WrappingSelect } from "./wrapping-select.js";
 
-// Hint text — these constants are also referenced by tests as substrings of the rendered
-// hint line. Keep them as full "contiguous substrings" of the buildHintText() output so the
-// `expect(joined).toContain(HINT_*)` assertions remain valid.
-//
-// Format (per UX spec):
-//   <Single>      = "Enter to select · ↑/↓ to navigate · Esc to cancel"
-//   <Multi>       = "Enter to select · ↑/↓ to navigate · Tab to switch questions · Esc to cancel"
-//   + multiSelect = inserts " · Space to toggle"
-//   + answered    = inserts " · n to add notes"
-export const HINT_SINGLE = "Enter to select · ↑/↓ to navigate · Esc to cancel";
-export const HINT_MULTI = "Enter to select · ↑/↓ to navigate · Tab to switch questions · Esc to cancel";
-export const HINT_MULTISELECT_SUFFIX = " · Space to toggle";
-export const HINT_NOTES_SUFFIX = " · n to add notes";
+// Hint phrases — single source of truth for both production (`buildHintText`) and the
+// substring assertions in `dialog-container.test.ts`.
+export const HINT_PART_ENTER = "Enter to select";
+export const HINT_PART_NAV = "↑/↓ to navigate";
+export const HINT_PART_TOGGLE = "Space to toggle";
+export const HINT_PART_NOTES = "n to add notes";
+export const HINT_PART_TAB = "Tab to switch questions";
+export const HINT_PART_CANCEL = "Esc to cancel";
+export const HINT_SINGLE = [HINT_PART_ENTER, HINT_PART_NAV, HINT_PART_CANCEL].join(" · ");
+export const HINT_MULTI = [HINT_PART_ENTER, HINT_PART_NAV, HINT_PART_TAB, HINT_PART_CANCEL].join(" · ");
+export const HINT_MULTISELECT_SUFFIX = ` · ${HINT_PART_TOGGLE}`;
+export const HINT_NOTES_SUFFIX = ` · ${HINT_PART_NOTES}`;
 export const REVIEW_HEADING = "Review your answers";
 export const READY_PROMPT = "Ready to submit your answers?";
 export const INCOMPLETE_WARNING_PREFIX = "⚠ Answer remaining questions before submitting:";
