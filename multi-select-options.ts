@@ -1,6 +1,7 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
-import { type Component, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
+import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
 import type { DialogState } from "./dialog-builder.js";
+import type { StatefulComponent } from "./stateful-component.js";
 import type { QuestionData } from "./types.js";
 
 const ACTIVE_POINTER = "❯ ";
@@ -24,7 +25,7 @@ const NEXT_LABEL = "Next";
  *
  * `setState(state)` is a pure field reassignment — no render, no invalidate side effects.
  */
-export class MultiSelectOptions implements Component {
+export class MultiSelectOptions implements StatefulComponent<DialogState> {
 	private state: DialogState;
 	/**
 	 * When false, the active-row pointer (`❯`) and the active-row accent/bold styling are

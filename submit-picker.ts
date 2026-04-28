@@ -1,6 +1,7 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
-import { type Component, truncateToWidth } from "@mariozechner/pi-tui";
+import { truncateToWidth } from "@mariozechner/pi-tui";
 import type { DialogState } from "./dialog-builder.js";
+import type { StatefulComponent } from "./stateful-component.js";
 
 const ACTIVE_POINTER = "❯ ";
 const INACTIVE_POINTER = "  ";
@@ -20,7 +21,7 @@ export const CANCEL_LABEL = "Cancel";
  *   chrome-mirror layout in `buildSubmitContainer` can subtract a fixed 2 lines without
  *   re-rendering.
  */
-export class SubmitPicker implements Component {
+export class SubmitPicker implements StatefulComponent<DialogState> {
 	private state: DialogState;
 	private focused = false;
 

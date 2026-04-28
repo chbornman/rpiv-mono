@@ -1,0 +1,190 @@
+import type { Theme } from "@mariozechner/pi-coding-agent";
+import { type Component, Container, type Input, Spacer, Text } from "@mariozechner/pi-tui";
+import { type DialogState, INCOMPLETE_WARNING_PREFIX, READY_PROMPT, REVIEW_HEADING } from "./dialog-builder.js";
+import { formatAnswerScalar } from "./format-answer.js";
+import type { MultiSelectOptions } from "./multi-select-options.js";
+import type { PreviewPane } from "./preview-pane.js";
+import type { QuestionData } from "./types.js";
+import type { WrappingSelect } from "./wrapping-select.js";
+
+/**
+ * Per-tab content provider for the dialog. The chrome wrapper enforces height
+ * equality across tabs by computing each strategy's natural footprint
+ * (`bodyHeight + footerRowCount`) and absorbing the residual via `BodyResidualSpacer`.
+ *
+ * Replaces the parallel `buildQuestionContainer` + `buildSubmitContainer` from the
+ * previous `dialog-builder.ts` and the `submitBodyHeight = summary.length + 1`
+ * compensation magic — the asymmetry is now expressed structurally as
+ * `maxFooterRowCount - currentFooterRowCount`.
+ */
+export interface TabStrategy {
+	/** Total RENDERED footer row count (NOT Component[].length — submitPicker renders to 2 rows). Constant per strategy regardless of state. Drives the chrome wrapper's residual math. */
+	readonly footerRowCount: number;
+
+	/** Variable rows above the body, after top chrome (border + tabBar + Spacer). */
+	headingRows(state: DialogState): Component[];
+
+	/** Body Component placed at the body slot. */
+	bodyComponent(state: DialogState): Component;
+
+	/** Natural rendered height of `bodyComponent(state)` at given width. */
+	bodyHeight(width: number, state: DialogState): number;
+
+	/** Optional rows between body's trailing Spacer and the bottom border (Question's notes block when notesVisible; empty otherwise). */
+	midRows(state: DialogState): Component[];
+
+	/** Footer rows below the bottom border. Total RENDERED rows MUST equal `footerRowCount`. */
+	footerRows(state: DialogState): Component[];
+}
+
+export interface QuestionTabStrategyConfig {
+	theme: Theme;
+	questions: readonly QuestionData[];
+	/** Live getter — `dialog.setPreviewPane()` updates the closure's reference. */
+	getPreviewPane: () => PreviewPane;
+	multiSelectOptionsByTab: ReadonlyArray<MultiSelectOptions | undefined>;
+	notesInput: Input;
+	chatList: WrappingSelect;
+	isMulti: boolean;
+	getCurrentBodyHeight: (width: number) => number;
+}
+
+export class QuestionTabStrategy implements TabStrategy {
+	/** Spacer(1) + chatList(1) + Spacer(1) + Text(hint, 1) = 4 rendered rows. */
+	readonly footerRowCount = 4;
+
+	constructor(private readonly config: QuestionTabStrategyConfig) {}
+
+	headingRows(state: DialogState): Component[] {
+		const out: Component[] = [];
+		const question = this.config.questions[state.currentTab];
+		// Single-mode badge — suppressed in multi mode (tab bar already shows the header).
+		if (!this.config.isMulti && question?.header && question.header.length > 0) {
+			out.push(new Text(this.config.theme.bg("selectedBg", ` ${question.header} `), 1, 0));
+			out.push(new Spacer(1));
+		}
+		if (question) {
+			out.push(new Text(this.config.theme.bold(question.question), 1, 0));
+			out.push(new Spacer(1));
+		}
+		return out;
+	}
+
+	bodyComponent(state: DialogState): Component {
+		const question = this.config.questions[state.currentTab];
+		const mso = this.config.multiSelectOptionsByTab[state.currentTab];
+		if (question?.multiSelect === true && mso) return mso;
+		return this.config.getPreviewPane();
+	}
+
+	bodyHeight(width: number, _state: DialogState): number {
+		return this.config.getCurrentBodyHeight(width);
+	}
+
+	midRows(state: DialogState): Component[] {
+		if (!state.notesVisible) return [];
+		return [new Text(this.config.theme.fg("muted", "Notes:"), 1, 0), this.config.notesInput, new Spacer(1)];
+	}
+
+	footerRows(state: DialogState): Component[] {
+		const question = this.config.questions[state.currentTab];
+		return [
+			new Spacer(1),
+			this.config.chatList,
+			new Spacer(1),
+			new Text(this.config.theme.fg("dim", buildHintText(question, this.config.isMulti, state)), 1, 0),
+		];
+	}
+}
+
+export interface SubmitTabStrategyConfig {
+	theme: Theme;
+	questions: readonly QuestionData[];
+	submitPicker: Component | undefined;
+}
+
+export class SubmitTabStrategy implements TabStrategy {
+	/** Spacer(1) + Text(prompt, 1) + Spacer(1) + submitPicker(2) = 5 rendered rows. Fallback path also lands at 5 via 2 trailing Spacer(1)s. */
+	readonly footerRowCount = 5;
+
+	constructor(private readonly config: SubmitTabStrategyConfig) {}
+
+	headingRows(_state: DialogState): Component[] {
+		return [new Text(this.config.theme.bold(this.config.theme.fg("accent", REVIEW_HEADING)), 1, 0), new Spacer(1)];
+	}
+
+	bodyComponent(state: DialogState): Component {
+		// Walk questions once: build the bullet+arrow summary container (omits unanswered).
+		// CC parity — the warning header in the footer is the sole signal of incompleteness.
+		const c = new Container();
+		for (let i = 0; i < this.config.questions.length; i++) {
+			const q = this.config.questions[i];
+			const a = state.answers.get(i);
+			if (!a) continue;
+			const label = q.header && q.header.length > 0 ? q.header : `Q${i + 1}`;
+			const answerText = formatAnswerScalar(a, "summary");
+			c.addChild(new Text(this.config.theme.fg("muted", ` ● ${label}`), 1, 0));
+			c.addChild(
+				new Text(`   ${this.config.theme.fg("muted", "→")} ${this.config.theme.fg("text", answerText)}`, 1, 0),
+			);
+			if (a.notes && a.notes.length > 0) {
+				c.addChild(new Text(this.config.theme.fg("dim", `     notes: ${a.notes}`), 1, 0));
+			}
+		}
+		return c;
+	}
+
+	bodyHeight(width: number, state: DialogState): number {
+		// Re-render the summary to count rows. Same per-frame cost as the previous
+		// `summary.render(w).length` call — no perf delta.
+		return this.bodyComponent(state).render(width).length;
+	}
+
+	midRows(_state: DialogState): Component[] {
+		return [];
+	}
+
+	footerRows(state: DialogState): Component[] {
+		const missing: string[] = [];
+		for (let i = 0; i < this.config.questions.length; i++) {
+			const q = this.config.questions[i];
+			if (!state.answers.has(i)) {
+				missing.push(q.header && q.header.length > 0 ? q.header : `Q${i + 1}`);
+			}
+		}
+		const promptText =
+			missing.length === 0
+				? this.config.theme.fg("muted", READY_PROMPT)
+				: this.config.theme.fg("warning", `${INCOMPLETE_WARNING_PREFIX} ${missing.join(", ")}`);
+		const out: Component[] = [new Spacer(1), new Text(promptText, 1, 0), new Spacer(1)];
+		if (this.config.submitPicker) {
+			out.push(this.config.submitPicker);
+		} else {
+			// Fallback when host hasn't wired the picker — keeps rendered row count at 5.
+			out.push(new Spacer(1));
+			out.push(new Spacer(1));
+		}
+		return out;
+	}
+}
+
+/**
+ * Build the controls hint line. Order is fixed so HINT_SINGLE / HINT_MULTI remain
+ * contiguous substrings of the rendered output:
+ *
+ *   Enter to select · ↑/↓ to navigate                          (← HINT_SINGLE prefix)
+ *     [· Space to toggle]                                       (multiSelect only)
+ *     [· n to add notes]                                        (single-select + preview-bearing focus)
+ *     [· Tab to switch questions]                               (multi-question only)
+ *   · Esc to cancel
+ */
+export function buildHintText(question: QuestionData | undefined, isMulti: boolean, state: DialogState): string {
+	const parts: string[] = ["Enter to select", "↑/↓ to navigate"];
+	if (question?.multiSelect === true) parts.push("Space to toggle");
+	if (question && question.multiSelect !== true && state.focusedOptionHasPreview && !state.notesVisible) {
+		parts.push("n to add notes");
+	}
+	if (isMulti) parts.push("Tab to switch questions");
+	parts.push("Esc to cancel");
+	return parts.join(" · ");
+}

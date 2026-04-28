@@ -47,10 +47,10 @@ function baseState(over: Partial<QuestionnaireDispatchState> = {}): Questionnair
 		currentTab: over.currentTab ?? 0,
 		optionIndex: over.optionIndex ?? 0,
 		inputMode: over.inputMode ?? false,
-		notesMode: over.notesMode ?? false,
+		notesVisible: over.notesVisible ?? false,
 		chatFocused: over.chatFocused ?? false,
 		answers: over.answers ?? new Map<number, QuestionAnswer>(),
-		multiSelectIndices: over.multiSelectIndices ?? new Set<number>(),
+		multiSelectChecked: over.multiSelectChecked ?? new Set<number>(),
 		questions,
 		isMulti: over.isMulti ?? questions.length > 1,
 		keybindings: over.keybindings ?? keybindings,
@@ -225,7 +225,7 @@ describe("handleQuestionnaireInput — multiSelect", () => {
 			optionIndex: 3,
 			items: [{ label: "FE" }, { label: "BE" }, { label: "Tests" }, { label: "Next", isNext: true }],
 			currentItem: { label: "Next", isNext: true },
-			multiSelectIndices: new Set([2, 0]),
+			multiSelectChecked: new Set([2, 0]),
 		});
 		expect(handleQuestionnaireInput(sentinel(KEY.CONFIRM), s)).toEqual({
 			kind: "multi_confirm",
@@ -242,7 +242,7 @@ describe("handleQuestionnaireInput — multiSelect", () => {
 			optionIndex: 3,
 			items: [{ label: "FE" }, { label: "BE" }, { label: "Tests" }, { label: "Next", isNext: true }],
 			currentItem: { label: "Next", isNext: true },
-			multiSelectIndices: new Set([0]),
+			multiSelectChecked: new Set([0]),
 		});
 		const action = handleQuestionnaireInput(sentinel(KEY.CONFIRM), s);
 		expect(action.kind).toBe("multi_confirm");
@@ -258,7 +258,7 @@ describe("handleQuestionnaireInput — multiSelect", () => {
 			optionIndex: 3,
 			items: [{ label: "FE" }, { label: "BE" }, { label: "Tests" }, { label: "Next", isNext: true }],
 			currentItem: { label: "Next", isNext: true },
-			multiSelectIndices: new Set([0]),
+			multiSelectChecked: new Set([0]),
 		});
 		const action = handleQuestionnaireInput(sentinel(KEY.CONFIRM), s);
 		expect(action.kind).toBe("multi_confirm");
@@ -274,7 +274,7 @@ describe("handleQuestionnaireInput — multiSelect", () => {
 			optionIndex: 3,
 			items: [{ label: "FE" }, { label: "BE" }, { label: "Tests" }, { label: "Next", isNext: true }],
 			currentItem: { label: "Next", isNext: true },
-			multiSelectIndices: new Set([0]),
+			multiSelectChecked: new Set([0]),
 		});
 		const action = handleQuestionnaireInput(sentinel(KEY.CONFIRM), s);
 		expect(action.kind).toBe("multi_confirm");
@@ -370,23 +370,23 @@ describe("handleQuestionnaireInput — notes", () => {
 	});
 
 	it("notesMode: Esc -> notes_exit", () => {
-		expect(handleQuestionnaireInput(sentinel(KEY.CANCEL), baseState({ notesMode: true }))).toEqual({
+		expect(handleQuestionnaireInput(sentinel(KEY.CANCEL), baseState({ notesVisible: true }))).toEqual({
 			kind: "notes_exit",
 		});
 	});
 
 	it("notesMode: Enter -> notes_exit (save + return to options)", () => {
-		expect(handleQuestionnaireInput(sentinel(KEY.CONFIRM), baseState({ notesMode: true }))).toEqual({
+		expect(handleQuestionnaireInput(sentinel(KEY.CONFIRM), baseState({ notesVisible: true }))).toEqual({
 			kind: "notes_exit",
 		});
 	});
 
 	it("notesMode: Tab byte is ignored (input-guard suppresses tab nav)", () => {
-		expect(handleQuestionnaireInput(BYTE_TAB, baseState({ notesMode: true }))).toEqual({ kind: "ignore" });
+		expect(handleQuestionnaireInput(BYTE_TAB, baseState({ notesVisible: true }))).toEqual({ kind: "ignore" });
 	});
 
 	it("notesMode: arbitrary printable byte is ignored (forwarded to Input by dialog)", () => {
-		expect(handleQuestionnaireInput("a", baseState({ notesMode: true }))).toEqual({ kind: "ignore" });
+		expect(handleQuestionnaireInput("a", baseState({ notesVisible: true }))).toEqual({ kind: "ignore" });
 	});
 });
 
@@ -483,7 +483,7 @@ describe("handleQuestionnaireInput — chat focus", () => {
 			currentTab: 0,
 			chatFocused: true,
 			currentItem: chatItem,
-			multiSelectIndices: new Set([0, 1]),
+			multiSelectChecked: new Set([0, 1]),
 		});
 		const action = handleQuestionnaireInput(sentinel(KEY.CONFIRM), s);
 		expect(action.kind).toBe("confirm");

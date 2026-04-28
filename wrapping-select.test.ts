@@ -190,25 +190,6 @@ describe("WrappingSelect.render — number column padding", () => {
 		s.setNumbering(3, 4);
 		expect(s.render(40)[0]).toContain("❯ 4. chat");
 	});
-
-	// Unit test for the numbering toggle. Multi-select rows now carry their own `N.` numbers
-	// and the chat row continues that contiguous numbering (CC parity), so no production code
-	// path currently calls setShowNumbering(false); this test still locks the helper's contract
-	// so the toggle remains usable for future hosts.
-	it("setShowNumbering(false) drops the `N. ` prefix from every row", () => {
-		const s = new WrappingSelect([{ label: "chat" }], 1, identityTheme, {
-			numberStartOffset: 4,
-			totalItemsForNumbering: 5,
-		});
-		expect(s.render(40)[0]).toContain("❯ 5. chat");
-		s.setShowNumbering(false);
-		const noNum = s.render(40)[0];
-		expect(noNum).toContain("❯ chat");
-		expect(noNum).not.toMatch(/\d+\.\s/);
-		// Re-enabling restores the prefix.
-		s.setShowNumbering(true);
-		expect(s.render(40)[0]).toContain("❯ 5. chat");
-	});
 });
 
 describe("WrappingSelect.render — description block", () => {

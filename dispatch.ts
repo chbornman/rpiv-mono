@@ -1,6 +1,6 @@
 import { Key, matchesKey } from "@mariozechner/pi-tui";
-import type { QuestionAnswer, QuestionData } from "./types.js";
-import type { WrappingSelectItem } from "./wrapping-select.js";
+import type { QuestionnaireDispatchSnapshot } from "./questionnaire-state.js";
+import type { QuestionAnswer } from "./types.js";
 
 const KEYBIND_UP = "tui.select.up";
 const KEYBIND_DOWN = "tui.select.down";
@@ -35,34 +35,7 @@ export interface QuestionnaireKeybindings {
 	matches(data: string, name: string): boolean;
 }
 
-export interface QuestionnaireDispatchState {
-	currentTab: number;
-	optionIndex: number;
-	inputMode: boolean;
-	notesMode: boolean;
-	chatFocused: boolean;
-	answers: ReadonlyMap<number, QuestionAnswer>;
-	multiSelectIndices: ReadonlySet<number>;
-	questions: readonly QuestionData[];
-	isMulti: boolean;
-	keybindings: QuestionnaireKeybindings;
-	currentItem: WrappingSelectItem | undefined;
-	inputBuffer: string;
-	items: readonly WrappingSelectItem[];
-	/**
-	 * True iff the currently-focused option carries a non-empty `preview` string.
-	 * Set by `ask-user-question.ts:dispatchSnapshot()` via `computeFocusedOptionHasPreview()`.
-	 * Gates the `notes_enter` action — notes are scoped to preview-bearing options
-	 * (Decision 8 + reference image showing affordance only on preview-bearing rows).
-	 */
-	focusedOptionHasPreview: boolean;
-	/**
-	 * Focused row in the Submit-tab picker (0 = Submit answers, 1 = Cancel).
-	 * Read by the Submit-tab dispatch branch to decide which action Enter emits;
-	 * mutated by the host on `submit_nav`. Default 0; reset on every tab switch.
-	 */
-	submitChoiceIndex: number;
-}
+export type QuestionnaireDispatchState = QuestionnaireDispatchSnapshot;
 
 export function wrapTab(index: number, total: number): number {
 	if (total <= 0) return 0;
@@ -130,7 +103,7 @@ function buildMultiSelected(state: QuestionnaireDispatchState): string[] {
 	if (!q) return [];
 	const out: string[] = [];
 	for (let i = 0; i < q.options.length; i++) {
-		if (state.multiSelectIndices.has(i)) {
+		if (state.multiSelectChecked.has(i)) {
 			const label = q.options[i]?.label;
 			if (typeof label === "string") out.push(label);
 		}
@@ -173,7 +146,7 @@ function prevNavOnUp(state: QuestionnaireDispatchState): QuestionnaireAction {
 export function handleQuestionnaireInput(data: string, state: QuestionnaireDispatchState): QuestionnaireAction {
 	const kb = state.keybindings;
 
-	if (state.notesMode) {
+	if (state.notesVisible) {
 		if (kb.matches(data, KEYBIND_CANCEL)) return { kind: "notes_exit" };
 		if (kb.matches(data, KEYBIND_CONFIRM)) return { kind: "notes_exit" };
 		return { kind: "ignore" };

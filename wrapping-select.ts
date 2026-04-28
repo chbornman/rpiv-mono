@@ -53,12 +53,6 @@ export class WrappingSelect implements Component {
 	private selectedIndex = 0;
 	private focused = true;
 	private inputBuffer = "";
-	/**
-	 * When false, render rows as `❯ label` / `  label` (no `N. ` prefix). Used by the host on
-	 * multi-select tabs so the chat row matches the un-numbered look of the multi-select option
-	 * rows above it (multi-select option rows render checkboxes, not numbers).
-	 */
-	private showNumbering = true;
 
 	constructor(
 		items: readonly WrappingSelectItem[],
@@ -81,11 +75,6 @@ export class WrappingSelect implements Component {
 	setNumbering(numberStartOffset: number, totalItemsForNumbering: number): void {
 		this.numberStartOffset = numberStartOffset;
 		this.totalItemsForNumbering = Math.max(1, totalItemsForNumbering);
-	}
-
-	/** Show or hide the `N. ` prefix on every row. Default: true. */
-	setShowNumbering(show: boolean): void {
-		this.showNumbering = show;
 	}
 
 	setSelectedIndex(index: number): void {
@@ -173,7 +162,6 @@ export class WrappingSelect implements Component {
 
 	private buildRowPrefix(index: number, isActive: boolean, numberWidth: number): string {
 		const pointer = isActive ? WrappingSelect.ACTIVE_POINTER : WrappingSelect.INACTIVE_POINTER;
-		if (!this.showNumbering) return pointer;
 		const displayNumber = this.numberStartOffset + index + 1;
 		const paddedNumber = String(displayNumber).padStart(numberWidth, " ");
 		return `${pointer}${paddedNumber}${WrappingSelect.NUMBER_SEPARATOR}`;

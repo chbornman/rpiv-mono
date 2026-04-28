@@ -58,6 +58,7 @@ function makeConfig(over: Partial<DialogConfig> = {}): DialogConfig {
 		optionIndex: 0,
 		notesVisible: false,
 		inputMode: false,
+		chatFocused: false,
 		answers: new Map(),
 		multiSelectChecked: new Set(),
 		focusedOptionHasPreview: false,
@@ -176,6 +177,7 @@ describe("buildDialog — multi-question (question tab)", () => {
 			optionIndex: 0,
 			notesVisible: false,
 			inputMode: false,
+			chatFocused: false,
 			answers: new Map(),
 			multiSelectChecked: new Set(),
 			focusedOptionHasPreview: false,
@@ -213,6 +215,7 @@ describe("buildDialog — multi-question (question tab)", () => {
 					optionIndex: 0,
 					notesVisible: false,
 					inputMode: false,
+					chatFocused: false,
 					answers: new Map([[0, answer]]),
 					multiSelectChecked: new Set(),
 					focusedOptionHasPreview: true,
@@ -232,6 +235,7 @@ describe("buildDialog — multi-question (question tab)", () => {
 				optionIndex: 0,
 				notesVisible: true,
 				inputMode: false,
+				chatFocused: false,
 				answers: new Map(),
 				multiSelectChecked: new Set(),
 				focusedOptionHasPreview: false,
@@ -259,6 +263,7 @@ describe("buildDialog — multi-question (question tab)", () => {
 			optionIndex: 1,
 			notesVisible: false,
 			inputMode: false,
+			chatFocused: false,
 			answers: new Map(),
 			multiSelectChecked: new Set([0]),
 			focusedOptionHasPreview: false,
@@ -308,6 +313,7 @@ describe("buildDialog — Submit tab", () => {
 			optionIndex: 0,
 			notesVisible: false,
 			inputMode: false,
+			chatFocused: false,
 			answers,
 			multiSelectChecked: new Set(),
 			focusedOptionHasPreview: false,
@@ -510,6 +516,7 @@ describe("buildDialog — width safety", () => {
 							optionIndex: 0,
 							notesVisible: ct === 0,
 							inputMode: false,
+							chatFocused: false,
 							answers: new Map([[0, { questionIndex: 0, question: "q", answer: "A" }]]),
 							multiSelectChecked: new Set(),
 							focusedOptionHasPreview: false,
@@ -534,16 +541,19 @@ describe("buildDialog — body residual padding", () => {
 	});
 
 	it("residual rows live AFTER the controls hint (very bottom of the dialog)", () => {
-		// Body stub = 1 row "<PREVIEW>"; residual = 5 rows. Footer order is:
-		//   <bottom border> · Spacer · <CHAT_ROW> · Spacer · hint · <5 residual blanks>
+		// Body stub = 1 row "<PREVIEW>"; residual = 6 rows. Post-Phase 7 the residual is
+		// `(getBodyHeight + maxFooterRowCount) - (currentBodyHeight + footerRowCount)`
+		// = (6 + 5) - (1 + 4) = 6, where maxFooterRowCount=5 (submit) and the question
+		// tab's footerRowCount=4. Footer order:
+		//   <bottom border> · Spacer · <CHAT_ROW> · Spacer · hint · <6 residual blanks>
 		const lines = buildDialog(makeConfig({ getBodyHeight: () => 6, getCurrentBodyHeight: () => 1 })).render(80);
 		const chatIdx = lines.findIndex((l) => l.includes("<CHAT_ROW>"));
 		const hintIdx = lines.findIndex((l) => l.includes(HINT_MULTI));
 		expect(chatIdx).toBeGreaterThan(0);
 		expect(hintIdx).toBeGreaterThan(chatIdx);
-		// Everything after the hint should be empty residual rows. Tail length === residual size (5).
+		// Everything after the hint should be empty residual rows. Tail length === residual size (6).
 		const tail = lines.slice(hintIdx + 1);
-		expect(tail.length).toBe(5);
+		expect(tail.length).toBe(6);
 		expect(tail.every((l) => l.trim() === "")).toBe(true);
 		// And there must NOT be a long blank gap between the bottom border and the chat row.
 		// The footer should sit immediately after the bottom border with a single Spacer in between.
@@ -582,6 +592,7 @@ describe("buildDialog — body residual padding", () => {
 			optionIndex: 0,
 			notesVisible: false,
 			inputMode: false,
+			chatFocused: false,
 			answers: new Map(),
 			multiSelectChecked: new Set(),
 			focusedOptionHasPreview: false,
