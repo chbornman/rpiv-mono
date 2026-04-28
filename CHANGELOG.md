@@ -7,6 +7,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Internal refactor: split `QuestionnaireSession` into a free-function selector module (`questionnaire-state.ts`), a pure `applyAction(state, action, ctx) → { state, effects }` reducer (`apply-action.ts`), and a `QuestionnaireViewAdapter` for component fan-out (`view-adapter.ts`). The slim runtime keeps the canonical state cell, the two-pass `notesVisible` dispatch loop, and an effect runner. No observable behavior change — all 754 existing tests pass without modification.
+- Drop redundant `QuestionnaireDispatchState` type alias; consumers use the canonical `QuestionnaireDispatchSnapshot` directly.
+- Unify hint copy via `HINT_PART_*` phrase tokens shared by `buildHintText()` and the existing `HINT_*` test-substring constants — single source of truth for the controls hint line.
+
 ## [1.0.1] - 2026-04-28
 
 ## [1.0.0] - 2026-04-28
