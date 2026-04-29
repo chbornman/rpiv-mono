@@ -5,7 +5,7 @@ All notable changes to `@juicesharp/rpiv-ask-user-question` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.7] - 2026-04-29
 
 ### Added
 - Multi-select questions now show "Submit" instead of "Next" on the trailing sentinel row when the question is the last in the questionnaire. The action is unchanged — Enter still commits and finishes; the label just stops implying another question follows.
