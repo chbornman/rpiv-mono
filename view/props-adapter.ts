@@ -1,15 +1,15 @@
 import type { InputBuffer } from "../state/input-buffer.js";
+import { selectActivePreviewPaneIndex } from "../state/selectors/derivations.js";
+import { selectActiveView } from "../state/selectors/focus.js";
 import {
-	type QuestionnaireState,
-	selectActivePreviewPaneIndex,
-	selectActiveView,
 	selectChatRowProps,
 	selectMultiSelectProps,
 	selectOptionListProps,
 	selectPreviewPaneProps,
 	selectSubmitPickerProps,
 	selectTabBarProps,
-} from "../state/questionnaire-state.js";
+} from "../state/selectors/projections.js";
+import type { QuestionnaireState } from "../state/state.js";
 import type { QuestionData } from "../tool/types.js";
 import type { ChatRowView } from "./components/chat-row-view.js";
 import type { SubmitPicker } from "./components/submit-picker.js";

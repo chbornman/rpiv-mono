@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-	buildItemsForQuestion,
-	buildQuestionnaireResponse,
-	buildToolResult,
-	chatNumberingFor,
-} from "./ask-user-question.js";
+import { buildItemsForQuestion, buildQuestionnaireResponse, buildToolResult } from "./ask-user-question.js";
+import { chatNumberingFor } from "./state/selectors/derivations.js";
 import type { QuestionnaireResult, QuestionParams } from "./tool/types.js";
 
 describe("buildItemsForQuestion", () => {

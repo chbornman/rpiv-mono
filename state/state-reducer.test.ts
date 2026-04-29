@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { QuestionAnswer, QuestionData } from "../tool/types.js";
 import type { WrappingSelectItem } from "../view/components/wrapping-select.js";
 import type { QuestionnaireAction } from "./key-router.js";
-import type { QuestionnaireState } from "./questionnaire-state.js";
+import type { QuestionnaireState } from "./state.js";
 import { type ApplyContext, reduce } from "./state-reducer.js";
 
 function makeQuestion(over: Partial<QuestionData> = {}): QuestionData {
@@ -36,7 +36,7 @@ function makeState(over: Partial<QuestionnaireState> = {}): QuestionnaireState {
 		chatFocused: over.chatFocused ?? false,
 		answers: over.answers ?? new Map(),
 		multiSelectChecked: over.multiSelectChecked ?? new Set(),
-		notesByTab: over.notesByTab,
+		notesByTab: over.notesByTab ?? new Map(),
 		focusedOptionHasPreview: over.focusedOptionHasPreview ?? false,
 		submitChoiceIndex: over.submitChoiceIndex ?? 0,
 	};
@@ -219,7 +219,7 @@ describe("reduce — notes_enter / notes_exit", () => {
 		const state = makeState({ answers, notesByTab: new Map([[0, "old note"]]), notesVisible: true });
 		const r = reduce(state, { kind: "notes_exit" }, makeCtx({ pendingNotesValue: "" }));
 		expect(r.state.notesVisible).toBe(false);
-		expect(r.state.notesByTab?.has(0)).toBe(false);
+		expect(r.state.notesByTab.has(0)).toBe(false);
 		expect(r.state.answers.get(0)?.notes).toBeUndefined();
 	});
 
@@ -232,7 +232,7 @@ describe("reduce — notes_enter / notes_exit", () => {
 			{ kind: "notes_exit" },
 			makeCtx({ pendingNotesValue: "fresh" }),
 		);
-		expect(r.state.notesByTab?.get(0)).toBe("fresh");
+		expect(r.state.notesByTab.get(0)).toBe("fresh");
 		expect(r.state.answers.get(0)?.notes).toBe("fresh");
 	});
 });
@@ -249,12 +249,6 @@ describe("reduce — focus_chat / focus_options / submit_nav / ignore", () => {
 		expect(r.state.chatFocused).toBe(false);
 		expect(r.state.optionIndex).toBe(0);
 		expect(r.effects).toEqual([{ kind: "clear_input_buffer" }]);
-	});
-
-	it("focus_options without optionIndex preserves cursor and emits no effect", () => {
-		const r = reduce(makeState({ chatFocused: true, optionIndex: 1 }), { kind: "focus_options" }, makeCtx());
-		expect(r.state.optionIndex).toBe(1);
-		expect(r.effects).toEqual([]);
 	});
 
 	it("submit_nav updates submitChoiceIndex with no effects", () => {

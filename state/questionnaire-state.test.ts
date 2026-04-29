@@ -6,9 +6,9 @@ import {
 	computeFocusedOptionHasPreview,
 	selectActivePreviewPaneIndex,
 	selectActiveTabItems,
-	selectActiveView,
 	selectConfirmedIndicator,
-} from "./questionnaire-state.js";
+} from "./selectors/derivations.js";
+import { selectActiveView } from "./selectors/focus.js";
 
 function q(over: Partial<QuestionData> = {}): QuestionData {
 	return {

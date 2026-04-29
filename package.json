@@ -34,7 +34,6 @@
     "state/input-buffer.ts",
     "state/key-router.ts",
     "state/questionnaire-session.ts",
-    "state/questionnaire-state.ts",
     "state/row-intent.ts",
     "state/selectors/derivations.ts",
     "state/selectors/focus.ts",

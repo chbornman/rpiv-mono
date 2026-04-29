@@ -12,11 +12,9 @@ const RESERVED_LABEL_SET: ReadonlySet<string> = new Set(RESERVED_LABELS);
 export type ValidationResult = { ok: true } | { ok: false; error: QuestionnaireError; message: string };
 
 /**
- * Pure runtime validator for `QuestionParams`. Covers guards 2-7 from the seven-guard
- * sequence in `execute(...)`; the env-dependent `no_ui` guard (guard 1) stays inline at
- * the call site because it depends on `ctx.hasUI`. Guard ordering is preserved verbatim
- * — `reserved_label` short-circuits BEFORE `duplicate_option_label`, pinned by
- * `ask-user-question.execute.test.ts:173-188`.
+ * Pure runtime validator for `QuestionParams`. Covers every guard except
+ * `no_ui` (which depends on `ctx.hasUI` and stays inline at the call site).
+ * `reserved_label` MUST short-circuit before `duplicate_option_label`.
  */
 export function validateQuestionnaire(typed: QuestionParams): ValidationResult {
 	if (typed.questions.length === 0) {

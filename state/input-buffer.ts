@@ -1,15 +1,9 @@
 /**
- * Session-owned input-buffer cell. Replaces the imperative input-buffer
- * methods that previously lived on `OptionListView` (`view`-layer ownership
- * was a Liskov violation — a view owning interactive state others read).
- *
- * The cell is mutable by design. The reducer does NOT know about the buffer
- * (D3's per-keystroke perf invariant); only the runtime side mutates it via
- * effect handlers (`set_input_buffer`, `clear_input_buffer`) and the
- * inline-key side-band (`handleIgnoreInline` for printable keys + backspace).
- *
- * The value flows to the view via `runtime.inputBuffer` → `selectOptionListProps`
- * → `OptionListView.setProps({inputBuffer})` per tick.
+ * Session-owned input-buffer cell. Mutable by design — the reducer never
+ * touches it. Mutation paths: effect handlers (`set_input_buffer`,
+ * `clear_input_buffer`) and the inline-key fast path (`handleIgnoreInline`
+ * for printable keys + backspace). The value flows to the view per tick via
+ * `runtime.inputBuffer` → `selectOptionListProps` → OptionListView.
  */
 export class InputBuffer {
 	private value = "";

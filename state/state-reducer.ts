@@ -37,12 +37,6 @@ export interface ApplyResult {
 	effects: readonly Effect[];
 }
 
-const EMPTY_NOTES: ReadonlyMap<number, string> = new Map();
-
-function notesOf(state: QuestionnaireState): ReadonlyMap<number, string> {
-	return state.notesByTab ?? EMPTY_NOTES;
-}
-
 function orderedAnswers(state: QuestionnaireState, questions: readonly QuestionData[]): QuestionAnswer[] {
 	const out: QuestionAnswer[] = [];
 	for (let i = 0; i < questions.length; i++) {
@@ -89,7 +83,7 @@ function persistMultiSelectAnswer(state: QuestionnaireState, ctx: ApplyContext):
 		out.delete(state.currentTab);
 		return out;
 	}
-	const pendingNotes = notesOf(state).get(state.currentTab);
+	const pendingNotes = state.notesByTab.get(state.currentTab);
 	out.set(state.currentTab, {
 		questionIndex: state.currentTab,
 		question: q.question,
@@ -113,7 +107,7 @@ function switchTabResult(state: QuestionnaireState, nextTab: number, ctx: ApplyC
 		multiSelectChecked: syncMultiSelectFromAnswers(state.answers, ctx.questions, nextTab),
 	};
 	const finalState = withFocusedOptionHasPreview(transitioned, ctx.questions);
-	const notesValue = notesOf(state).get(nextTab) ?? state.answers.get(nextTab)?.notes ?? "";
+	const notesValue = state.notesByTab.get(nextTab) ?? state.answers.get(nextTab)?.notes ?? "";
 	return {
 		state: finalState,
 		effects: [
@@ -169,7 +163,7 @@ export function reduce(state: QuestionnaireState, action: QuestionnaireAction, c
 					answer = { ...answer, preview: matched.preview };
 				}
 			}
-			const pendingNotes = notesOf(state).get(answer.questionIndex);
+			const pendingNotes = state.notesByTab.get(answer.questionIndex);
 			if (pendingNotes && pendingNotes.length > 0) {
 				answer = { ...answer, notes: pendingNotes };
 			}
@@ -190,7 +184,7 @@ export function reduce(state: QuestionnaireState, action: QuestionnaireAction, c
 		case "multi_confirm": {
 			const q = ctx.questions[state.currentTab];
 			if (!q) return { state, effects: [] };
-			const pendingNotes = notesOf(state).get(state.currentTab);
+			const pendingNotes = state.notesByTab.get(state.currentTab);
 			const answers = new Map(state.answers);
 			answers.set(state.currentTab, {
 				questionIndex: state.currentTab,
@@ -223,7 +217,7 @@ export function reduce(state: QuestionnaireState, action: QuestionnaireAction, c
 		}
 		case "notes_exit": {
 			const trimmed = ctx.pendingNotesValue;
-			const notes = new Map(notesOf(state));
+			const notes = new Map(state.notesByTab);
 			const answers = new Map(state.answers);
 			if (trimmed.length === 0) {
 				notes.delete(state.currentTab);
@@ -253,21 +247,14 @@ export function reduce(state: QuestionnaireState, action: QuestionnaireAction, c
 			return { state: { ...state, chatFocused: true }, effects: [] };
 		}
 		case "focus_options": {
-			let optionIndex = state.optionIndex;
-			let inputMode = state.inputMode;
-			let effects: readonly Effect[] = [];
-			if (action.optionIndex !== undefined) {
-				optionIndex = action.optionIndex;
-				const items = ctx.itemsByTab[state.currentTab] ?? [];
-				const focused = items[optionIndex];
-				inputMode = focused ? ROW_INTENT_META[focused.kind].activatesInputMode : false;
-				if (!inputMode) effects = [{ kind: "clear_input_buffer" }];
-			}
+			const items = ctx.itemsByTab[state.currentTab] ?? [];
+			const focused = items[action.optionIndex];
+			const inputMode = focused ? ROW_INTENT_META[focused.kind].activatesInputMode : false;
 			const next = withFocusedOptionHasPreview(
-				{ ...state, chatFocused: false, optionIndex, inputMode },
+				{ ...state, chatFocused: false, optionIndex: action.optionIndex, inputMode },
 				ctx.questions,
 			);
-			return { state: next, effects };
+			return { state: next, effects: inputMode ? [] : [{ kind: "clear_input_buffer" }] };
 		}
 		case "ignore": {
 			return { state, effects: [] };

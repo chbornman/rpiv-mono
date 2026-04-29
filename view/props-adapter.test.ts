@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { InputBuffer } from "../state/input-buffer.js";
-import type { QuestionnaireState } from "../state/questionnaire-state.js";
+import type { QuestionnaireState } from "../state/state.js";
 import type { QuestionAnswer, QuestionData } from "../tool/types.js";
 import type { ChatRowView, ChatRowViewProps } from "./components/chat-row-view.js";
 import type { MultiSelectView, MultiSelectViewProps } from "./components/multi-select-view.js";
@@ -35,7 +35,7 @@ function makeState(over: Partial<QuestionnaireState> = {}): QuestionnaireState {
 		chatFocused: over.chatFocused ?? false,
 		answers: over.answers ?? new Map(),
 		multiSelectChecked: over.multiSelectChecked ?? new Set(),
-		notesByTab: over.notesByTab,
+		notesByTab: over.notesByTab ?? new Map(),
 		focusedOptionHasPreview: over.focusedOptionHasPreview ?? false,
 		submitChoiceIndex: over.submitChoiceIndex ?? 0,
 	};

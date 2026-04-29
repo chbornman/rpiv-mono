@@ -36,20 +36,17 @@ function initialState(): QuestionnaireState {
 		chatFocused: false,
 		answers: new Map(),
 		multiSelectChecked: new Set(),
+		notesByTab: new Map(),
 		focusedOptionHasPreview: false,
 		submitChoiceIndex: 0,
 	};
 }
 
 /**
- * Slim runtime: owns the canonical state cell + the input-buffer cell + the
- * two-pass `notesVisible` dispatch loop + the effect runner. State transitions
- * delegate to the pure `reduce` reducer; UI fan-out delegates to the
- * `QuestionnairePropsAdapter` constructed by `buildQuestionnaire`.
- *
- * Construction is delegated entirely to `buildQuestionnaire(config)`. The
- * session keeps four narrow handles the action loop needs: `notesInput`,
- * `viewAdapter`, `inputBuffer`, `done`.
+ * Slim runtime: owns the canonical state cell, the input-buffer cell, the
+ * two-pass `notesVisible` dispatch loop, and the effect runner. State
+ * transitions go through the pure `reduce` reducer; UI fan-out goes through
+ * the `QuestionnairePropsAdapter` produced by `buildQuestionnaire`.
  */
 export class QuestionnaireSession {
 	private state: QuestionnaireState = initialState();
@@ -73,8 +70,7 @@ export class QuestionnaireSession {
 		this.questions = config.params.questions;
 		this.isMulti = this.questions.length > 1;
 		this.itemsByTab = config.itemsByTab;
-		// Seed from the focused option at start (cursor at tab 0, option 0). The reducer keeps
-		// this in sync via `withFocusedOptionHasPreview` on subsequent transitions.
+		// Seed from the focused option at start; the reducer keeps it in sync via withFocusedOptionHasPreview.
 		this.state = { ...this.state, focusedOptionHasPreview: computeFocusedOptionHasPreview(this.questions, 0, 0) };
 
 		const built = buildQuestionnaire({
@@ -153,10 +149,9 @@ export class QuestionnaireSession {
 	}
 
 	/**
-	 * Inline `ignore` handler — preserves D3's per-keystroke perf invariant
-	 * (no reducer pass) by mutating the session-owned buffer cell directly.
-	 * Calls `viewAdapter.apply(state)` so the new buffer value flows out via
-	 * `selectOptionListProps` → `OptionListView.setProps({inputBuffer})`.
+	 * Per-keystroke `ignore` fast path: mutates the session-owned input buffer
+	 * directly (no reducer pass) and re-runs `viewAdapter.apply(state)` so the
+	 * new buffer value flows out via `selectOptionListProps`.
 	 */
 	private handleIgnoreInline(data: string): void {
 		if (!this.state.inputMode) return;

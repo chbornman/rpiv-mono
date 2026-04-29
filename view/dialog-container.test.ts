@@ -95,6 +95,7 @@ function makeConfig(over: MakeConfigOverrides = {}): DialogConfig {
 		chatFocused: false,
 		answers: new Map(),
 		multiSelectChecked: new Set(),
+		notesByTab: new Map(),
 		focusedOptionHasPreview: false,
 		submitChoiceIndex: 0,
 	};
@@ -211,6 +212,7 @@ describe("buildDialog — multi-question (question tab)", () => {
 			chatFocused: false,
 			answers: new Map(),
 			multiSelectChecked: new Set(),
+			notesByTab: new Map(),
 			focusedOptionHasPreview: false,
 			submitChoiceIndex: 0,
 		};
@@ -249,6 +251,7 @@ describe("buildDialog — multi-question (question tab)", () => {
 					chatFocused: false,
 					answers: new Map([[0, answer]]),
 					multiSelectChecked: new Set(),
+					notesByTab: new Map(),
 					focusedOptionHasPreview: true,
 					submitChoiceIndex: 0,
 				},
@@ -269,6 +272,7 @@ describe("buildDialog — multi-question (question tab)", () => {
 				chatFocused: false,
 				answers: new Map(),
 				multiSelectChecked: new Set(),
+				notesByTab: new Map(),
 				focusedOptionHasPreview: false,
 				submitChoiceIndex: 0,
 			},
@@ -297,6 +301,7 @@ describe("buildDialog — multi-question (question tab)", () => {
 			chatFocused: false,
 			answers: new Map(),
 			multiSelectChecked: new Set([0]),
+			notesByTab: new Map(),
 			focusedOptionHasPreview: false,
 			submitChoiceIndex: 0,
 		};
@@ -345,6 +350,7 @@ describe("buildDialog — Submit tab", () => {
 			chatFocused: false,
 			answers,
 			multiSelectChecked: new Set(),
+			notesByTab: new Map(),
 			focusedOptionHasPreview: false,
 			submitChoiceIndex: 0,
 			...over,
@@ -553,6 +559,7 @@ describe("buildDialog — width safety", () => {
 							chatFocused: false,
 							answers: new Map([[0, { questionIndex: 0, question: "q", kind: "option", answer: "A" }]]),
 							multiSelectChecked: new Set(),
+							notesByTab: new Map(),
 							focusedOptionHasPreview: false,
 							submitChoiceIndex: 0,
 						},
@@ -619,6 +626,7 @@ describe("buildDialog — body residual padding", () => {
 			chatFocused: false,
 			answers: new Map(),
 			multiSelectChecked: new Set(),
+			notesByTab: new Map(),
 			focusedOptionHasPreview: false,
 			submitChoiceIndex: 0,
 		};

@@ -50,6 +50,7 @@ function makeState(over: Partial<QuestionnaireState> = {}): QuestionnaireState {
 		chatFocused: false,
 		answers: new Map<number, QuestionAnswer>(),
 		multiSelectChecked: new Set<number>(),
+		notesByTab: new Map<number, string>(),
 		focusedOptionHasPreview: false,
 		submitChoiceIndex: 0,
 		...over,
@@ -577,10 +578,6 @@ describe("routeKey — chat focus", () => {
 		).toEqual({ kind: "focus_chat" });
 	});
 
-	// UP / DOWN from the chat row participate in the continuous cycle covered by the
-	// "chat-inclusive cycle (Defect 2)" describe block below — they no longer emit a bare
-	// `focus_options` (that would leave optionIndex frozen at the prior position).
-
 	it.each<[string, string, number]>([
 		["Tab", BYTE_TAB, 1],
 		["Right", BYTE_RIGHT, 1],
@@ -647,15 +644,8 @@ describe("routeKey — chat focus", () => {
 	});
 });
 
-// Defect 2 — UP/DOWN must form a single natural cycle that includes the chat row both ways:
-//   chat → option0 → option1 → … → optionLast → chat → option0 …  (DOWN)
-//   chat ← option0 ← option1 ← … ← optionLast ← chat ← option0 …  (UP)
-//
-// Currently UP at optionIndex 0 wraps to the last option (skips chat), and DOWN/UP from chat
-// emits a bare `focus_options` that leaves optionIndex untouched (so chat → DOWN cycles back
-// to the prior position, not to option 0). These tests pin the EXPECTED behavior — they fail
-// against the current dispatch and will turn green once the fix lands.
-describe("routeKey — chat-inclusive cycle (Defect 2)", () => {
+// UP/DOWN form a single cycle through `[chat, option0, …, optionLast]` in both directions.
+describe("routeKey — chat-inclusive cycle", () => {
 	const chatItem: WrappingSelectItem = { kind: "chat", label: "Chat about this" };
 
 	it("UP at optionIndex 0 (single-select) emits focus_chat — wraps UP into the chat row", () => {

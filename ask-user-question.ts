@@ -16,8 +16,6 @@ import type { WrappingSelectItem } from "./view/components/wrapping-select.js";
 
 const ERROR_NO_UI = "Error: UI not available (running in non-interactive mode)";
 
-export { chatNumberingFor } from "./state/questionnaire-state.js";
-
 export function buildItemsForQuestion(question: QuestionData): WrappingSelectItem[] {
 	const items: WrappingSelectItem[] = question.options.map((o) => ({
 		kind: "option",

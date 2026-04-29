@@ -24,12 +24,10 @@ export type QuestionnaireAction =
 	| { kind: "submit_nav"; nextIndex: 0 | 1 }
 	| { kind: "focus_chat" }
 	/**
-	 * Optional `optionIndex` lets the dispatcher tell the host where to land when leaving the
-	 * chat row, so UP/DOWN form a continuous cycle through `[chat, option0, …, optionLast]`
-	 * (Defect 2). When omitted, the host preserves the existing optionIndex (UP-from-chat
-	 * legacy behavior — currently still emitted by some branches and consumers).
+	 * Carries the target index so UP/DOWN form a continuous cycle through
+	 * `[chat, option0, …, optionLast]`.
 	 */
-	| { kind: "focus_options"; optionIndex?: number }
+	| { kind: "focus_options"; optionIndex: number }
 	| { kind: "ignore" };
 
 export interface QuestionnaireKeybindings {
@@ -129,9 +127,7 @@ function tabSwitchAction(
 	return null;
 }
 
-// DOWN navigation helper shared by inputMode and normal nav branches.
-// Emits focus_chat at the boundary (last item) so the host can transfer focus to the chat row
-// without mutating optionIndex — UP-from-chat then lands on items.length - 1 (continuous cycle).
+// DOWN at the last item emits focus_chat so the cycle [chat, option0, …, optionLast] wraps.
 function nextNavOnDown(state: QuestionnaireState, runtime: QuestionnaireRuntime): QuestionnaireAction {
 	if (runtime.items.length > 0 && state.optionIndex === runtime.items.length - 1) {
 		return { kind: "focus_chat" };
@@ -139,9 +135,7 @@ function nextNavOnDown(state: QuestionnaireState, runtime: QuestionnaireRuntime)
 	return { kind: "nav", nextIndex: wrapTab(state.optionIndex + 1, Math.max(1, runtime.items.length)) };
 }
 
-// UP navigation helper, symmetric with nextNavOnDown. At the TOP boundary (optionIndex 0)
-// emits focus_chat so the cycle wraps `[chat, option0, …, optionLast]` — without this, UP at
-// option 0 would skip the chat row entirely (Defect 2). Above the boundary, decrement.
+// UP at the top item emits focus_chat (symmetric with nextNavOnDown).
 function prevNavOnUp(state: QuestionnaireState, runtime: QuestionnaireRuntime): QuestionnaireAction {
 	if (runtime.items.length > 0 && state.optionIndex === 0) {
 		return { kind: "focus_chat" };

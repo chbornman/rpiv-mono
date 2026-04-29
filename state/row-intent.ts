@@ -117,9 +117,8 @@ export const ROW_INTENT_META: Record<RowKind, RowIntentMeta> = {
 };
 
 /**
- * Kind-keyed label view. Mirrors the pre-existing `SENTINEL_LABELS` shape so
- * `types.ts` can re-source its export from here without consumer changes.
- * `option` is excluded — its label is per-instance, not per-kind.
+ * Kind-keyed label view. `option` is excluded — its label is per-instance,
+ * not per-kind. `types.ts#SENTINEL_LABELS` re-sources from here.
  */
 export const LABELS_BY_KIND: { readonly [K in SentinelKind]: string } = {
 	other: ROW_INTENT_META.other.label,
@@ -128,9 +127,8 @@ export const LABELS_BY_KIND: { readonly [K in SentinelKind]: string } = {
 };
 
 /**
- * Reserved-label set for runtime validation. Includes "Other" (CC parity —
- * model-conditioned label that never has a runtime kind) plus every sentinel
- * with `reserved: true`. `validate-questionnaire.ts:43` reads this.
+ * Reserved-label set for runtime validation. Includes "Other" (a model-conditioned
+ * label that has no runtime kind) plus every sentinel with `reserved: true`.
  */
 export const RESERVED_LABEL_SET: ReadonlySet<string> = new Set<string>([
 	"Other",
