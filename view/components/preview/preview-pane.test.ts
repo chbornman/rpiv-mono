@@ -23,7 +23,9 @@ vi.mock("@mariozechner/pi-tui", async (orig) => {
 	return { ...actual, Markdown: FakeMarkdown };
 });
 
-import { OptionListView } from "./option-list-view.js";
+import type { QuestionData } from "../../../tool/types.js";
+import { OptionListView } from "../option-list-view.js";
+import type { WrappingSelectItem } from "../wrapping-select.js";
 import {
 	MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE,
 	MAX_PREVIEW_HEIGHT_STACKED,
@@ -34,8 +36,6 @@ import {
 	PreviewPane,
 	renderBorderedBox,
 } from "./preview-pane.js";
-import type { QuestionData } from "./types.js";
-import type { WrappingSelectItem } from "./wrapping-select.js";
 
 const theme = makeTheme() as unknown as Theme;
 const selectTheme = {

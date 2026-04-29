@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { QuestionData } from "../tool/types.js";
 import {
 	LABELS_BY_KIND,
 	RESERVED_LABEL_SET,
@@ -7,7 +8,6 @@ import {
 	SENTINEL_KINDS,
 	sentinelsToAppend,
 } from "./row-intent.js";
-import type { QuestionData } from "./types.js";
 
 const ALL_KINDS: readonly RowKind[] = ["option", "other", "chat", "next"];
 

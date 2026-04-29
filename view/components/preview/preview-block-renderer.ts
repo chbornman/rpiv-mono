@@ -1,5 +1,6 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import type { MarkdownTheme } from "@mariozechner/pi-tui";
+import type { QuestionData } from "../../../tool/types.js";
 import {
 	MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE,
 	MAX_PREVIEW_HEIGHT_STACKED,
@@ -14,7 +15,6 @@ import {
 	renderBorderedBox,
 } from "./preview-box-renderer.js";
 import type { PreviewLayoutMode } from "./preview-layout-decider.js";
-import type { QuestionData } from "./types.js";
 
 /**
  * Affordance text shown below the bordered preview when focused on a preview-bearing option.

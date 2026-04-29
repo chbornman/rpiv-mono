@@ -1,7 +1,7 @@
 import { Key, matchesKey } from "@mariozechner/pi-tui";
+import type { QuestionAnswer } from "../tool/types.js";
 import type { QuestionnaireDispatchSnapshot } from "./questionnaire-state.js";
 import { ROW_INTENT_META } from "./row-intent.js";
-import type { QuestionAnswer } from "./types.js";
 
 const KEYBIND_UP = "tui.select.up";
 const KEYBIND_DOWN = "tui.select.down";

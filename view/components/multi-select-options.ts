@@ -1,7 +1,7 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@mariozechner/pi-tui";
-import type { StatefulView } from "./stateful-view.js";
-import { type QuestionData, SENTINEL_LABELS } from "./types.js";
+import { type QuestionData, SENTINEL_LABELS } from "../../tool/types.js";
+import type { StatefulView } from "../stateful-view.js";
 
 const ACTIVE_POINTER = "❯ ";
 const INACTIVE_POINTER = "  ";

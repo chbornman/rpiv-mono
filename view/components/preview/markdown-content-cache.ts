@@ -1,7 +1,7 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { Markdown, type MarkdownTheme, visibleWidth } from "@mariozechner/pi-tui";
+import type { QuestionData } from "../../../tool/types.js";
 import { stripFenceMarkers } from "./preview-box-renderer.js";
-import type { QuestionData } from "./types.js";
 
 /** CC parity in side-by-side layout. */
 export const MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE = 20;

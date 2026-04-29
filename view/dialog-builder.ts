@@ -1,13 +1,13 @@
 import { DynamicBorder, type Theme } from "@mariozechner/pi-coding-agent";
 import { type Component, Container, type Input, Spacer } from "@mariozechner/pi-tui";
+import type { QuestionnaireState } from "../state/questionnaire-state.js";
+import type { QuestionData } from "../tool/types.js";
 import { BodyResidualSpacer } from "./body-residual-spacer.js";
-import type { ChatRowView } from "./chat-row-view.js";
-import type { MultiSelectOptions } from "./multi-select-options.js";
-import type { PreviewPane } from "./preview-pane.js";
-import type { QuestionnaireState } from "./questionnaire-state.js";
-import type { TabBar } from "./tab-bar.js";
+import type { ChatRowView } from "./components/chat-row-view.js";
+import type { MultiSelectOptions } from "./components/multi-select-options.js";
+import type { PreviewPane } from "./components/preview/preview-pane.js";
+import type { TabBar } from "./components/tab-bar.js";
 import { QuestionTabStrategy, SubmitTabStrategy, type TabContentStrategy } from "./tab-content-strategy.js";
-import type { QuestionData } from "./types.js";
 
 // Hint phrases — single source of truth for both production (`buildHintText`) and the
 // substring assertions in `dialog-container.test.ts`.

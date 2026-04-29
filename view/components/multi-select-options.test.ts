@@ -2,8 +2,8 @@ import { makeTheme } from "@juicesharp/rpiv-test-utils";
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import { describe, expect, it } from "vitest";
+import type { QuestionData } from "../../tool/types.js";
 import { MultiSelectOptions, type MultiSelectOptionsProps } from "./multi-select-options.js";
-import type { QuestionData } from "./types.js";
 
 const theme = makeTheme() as unknown as Theme;
 

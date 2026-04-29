@@ -1,8 +1,8 @@
+import type { QuestionAnswer, QuestionData, QuestionnaireResult } from "../tool/types.js";
+import type { WrappingSelectItem } from "../view/components/wrapping-select.js";
 import type { QuestionnaireAction } from "./dispatch.js";
 import { computeFocusedOptionHasPreview, type QuestionnaireState } from "./questionnaire-state.js";
 import { ROW_INTENT_META } from "./row-intent.js";
-import type { QuestionAnswer, QuestionData, QuestionnaireResult } from "./types.js";
-import type { WrappingSelectItem } from "./wrapping-select.js";
 
 /**
  * Per-dispatch context that doesn't live on canonical state. Captured by the runtime each

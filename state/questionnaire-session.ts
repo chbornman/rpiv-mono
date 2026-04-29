@@ -1,13 +1,18 @@
 import { getMarkdownTheme, type Theme } from "@mariozechner/pi-coding-agent";
 import { getKeybindings, Input } from "@mariozechner/pi-tui";
+import { type QuestionData, type QuestionnaireResult, type QuestionParams, SENTINEL_LABELS } from "../tool/types.js";
+import { ChatRowView } from "../view/components/chat-row-view.js";
+import { MultiSelectOptions } from "../view/components/multi-select-options.js";
+import { OptionListView } from "../view/components/option-list-view.js";
+import { PreviewBlockRenderer } from "../view/components/preview/preview-block-renderer.js";
+import { PreviewPane } from "../view/components/preview/preview-pane.js";
+import { SubmitPicker } from "../view/components/submit-picker.js";
+import { TabBar } from "../view/components/tab-bar.js";
+import type { WrappingSelectItem, WrappingSelectTheme } from "../view/components/wrapping-select.js";
+import { buildDialog, type DialogComponent } from "../view/dialog-builder.js";
+import { QuestionnaireViewAdapter } from "../view/view-adapter.js";
 import { type ApplyContext, applyAction, type Effect } from "./apply-action.js";
-import { ChatRowView } from "./chat-row-view.js";
-import { buildDialog, type DialogComponent } from "./dialog-builder.js";
 import { handleQuestionnaireInput, type QuestionnaireAction } from "./dispatch.js";
-import { MultiSelectOptions } from "./multi-select-options.js";
-import { OptionListView } from "./option-list-view.js";
-import { PreviewBlockRenderer } from "./preview-block-renderer.js";
-import { PreviewPane } from "./preview-pane.js";
 import {
 	chatNumberingFor,
 	computeFocusedOptionHasPreview,
@@ -19,11 +24,6 @@ import {
 	selectSubmitPickerProps,
 	selectTabBarProps,
 } from "./questionnaire-state.js";
-import { SubmitPicker } from "./submit-picker.js";
-import { TabBar } from "./tab-bar.js";
-import { type QuestionData, type QuestionnaireResult, type QuestionParams, SENTINEL_LABELS } from "./types.js";
-import { QuestionnaireViewAdapter } from "./view-adapter.js";
-import type { WrappingSelectItem, WrappingSelectTheme } from "./wrapping-select.js";
 
 const BACKSPACE_CHARS = new Set(["\x7f", "\b"]);
 const ESC_SEQUENCE_PREFIX = "\x1b";

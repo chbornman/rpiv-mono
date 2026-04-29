@@ -1,7 +1,7 @@
 import { createMockPi } from "@juicesharp/rpiv-test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAskUserQuestionTool } from "./ask-user-question.js";
-import type { QuestionAnswer, QuestionnaireResult } from "./types.js";
+import type { QuestionAnswer, QuestionnaireResult } from "./tool/types.js";
 
 /** Narrowed tool-result shape for test assertions. */
 interface ToolResult {

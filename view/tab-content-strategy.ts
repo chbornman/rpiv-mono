@@ -1,6 +1,10 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { type Component, Container, type Input, Spacer, Text } from "@mariozechner/pi-tui";
-import type { ChatRowView } from "./chat-row-view.js";
+import { formatAnswerScalar } from "../tool/format-answer.js";
+import type { QuestionData } from "../tool/types.js";
+import type { ChatRowView } from "./components/chat-row-view.js";
+import type { MultiSelectOptions } from "./components/multi-select-options.js";
+import type { PreviewPane } from "./components/preview/preview-pane.js";
 import {
 	type DialogState,
 	HINT_PART_CANCEL,
@@ -13,10 +17,6 @@ import {
 	READY_PROMPT,
 	REVIEW_HEADING,
 } from "./dialog-builder.js";
-import { formatAnswerScalar } from "./format-answer.js";
-import type { MultiSelectOptions } from "./multi-select-options.js";
-import type { PreviewPane } from "./preview-pane.js";
-import type { QuestionData } from "./types.js";
 
 /**
  * Per-tab content provider for the dialog. The role-rename makes it explicit

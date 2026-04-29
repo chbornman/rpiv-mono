@@ -5,7 +5,7 @@ import {
 	buildToolResult,
 	chatNumberingFor,
 } from "./ask-user-question.js";
-import type { QuestionnaireResult, QuestionParams } from "./types.js";
+import type { QuestionnaireResult, QuestionParams } from "./tool/types.js";
 
 describe("buildItemsForQuestion", () => {
 	it("appends the Type-something sentinel", () => {

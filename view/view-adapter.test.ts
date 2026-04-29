@@ -1,15 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ChatRowView } from "./chat-row-view.js";
+import type { QuestionnaireState } from "../state/questionnaire-state.js";
+import type { QuestionAnswer, QuestionData } from "../tool/types.js";
+import type { ChatRowView } from "./components/chat-row-view.js";
+import type { MultiSelectOptions } from "./components/multi-select-options.js";
+import type { OptionListView } from "./components/option-list-view.js";
+import type { PreviewPane } from "./components/preview/preview-pane.js";
+import type { SubmitPicker } from "./components/submit-picker.js";
+import type { TabBar } from "./components/tab-bar.js";
+import type { WrappingSelectItem } from "./components/wrapping-select.js";
 import type { DialogComponent } from "./dialog-builder.js";
-import type { MultiSelectOptions } from "./multi-select-options.js";
-import type { OptionListView } from "./option-list-view.js";
-import type { PreviewPane } from "./preview-pane.js";
-import type { QuestionnaireState } from "./questionnaire-state.js";
-import type { SubmitPicker } from "./submit-picker.js";
-import type { TabBar } from "./tab-bar.js";
-import type { QuestionAnswer, QuestionData } from "./types.js";
 import { QuestionnaireViewAdapter } from "./view-adapter.js";
-import type { WrappingSelectItem } from "./wrapping-select.js";
 
 function makeQuestion(over: Partial<QuestionData> = {}): QuestionData {
 	return {

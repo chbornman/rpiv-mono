@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { SENTINEL_LABELS } from "../../tool/types.js";
 import { ChatRowView } from "./chat-row-view.js";
-import { SENTINEL_LABELS } from "./types.js";
 import type { WrappingSelectTheme } from "./wrapping-select.js";
 
 const PASSTHROUGH: WrappingSelectTheme = {

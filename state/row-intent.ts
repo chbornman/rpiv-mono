@@ -1,5 +1,5 @@
-import type { QuestionData } from "./types.js";
-import type { WrappingSelectItem } from "./wrapping-select.js";
+import type { QuestionData } from "../tool/types.js";
+import type { WrappingSelectItem } from "../view/components/wrapping-select.js";
 
 /**
  * Row kind discriminator. Single source of truth — derived from the runtime

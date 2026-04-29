@@ -1,4 +1,4 @@
-import type { StatefulView } from "./stateful-view.js";
+import type { StatefulView } from "../stateful-view.js";
 import { WrappingSelect, type WrappingSelectItem, type WrappingSelectTheme } from "./wrapping-select.js";
 
 /**

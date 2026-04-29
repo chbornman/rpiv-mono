@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { QuestionnaireSession } from "./questionnaire-session.js";
-import { buildQuestionnaireResponse, buildToolResult } from "./response-envelope.js";
-import { ROW_INTENT_META, sentinelsToAppend } from "./row-intent.js";
+import { QuestionnaireSession } from "./state/questionnaire-session.js";
+import { ROW_INTENT_META, sentinelsToAppend } from "./state/row-intent.js";
+import { buildQuestionnaireResponse, buildToolResult } from "./tool/response-envelope.js";
 import {
 	MAX_OPTIONS,
 	MAX_QUESTIONS,
@@ -10,13 +10,13 @@ import {
 	type QuestionnaireResult,
 	type QuestionParams,
 	QuestionParamsSchema,
-} from "./types.js";
-import { validateQuestionnaire } from "./validate-questionnaire.js";
-import type { WrappingSelectItem } from "./wrapping-select.js";
+} from "./tool/types.js";
+import { validateQuestionnaire } from "./tool/validate-questionnaire.js";
+import type { WrappingSelectItem } from "./view/components/wrapping-select.js";
 
 const ERROR_NO_UI = "Error: UI not available (running in non-interactive mode)";
 
-export { chatNumberingFor } from "./questionnaire-state.js";
+export { chatNumberingFor } from "./state/questionnaire-state.js";
 
 export function buildItemsForQuestion(question: QuestionData): WrappingSelectItem[] {
 	const items: WrappingSelectItem[] = question.options.map((o) => ({

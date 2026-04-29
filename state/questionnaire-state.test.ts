@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { QuestionAnswer, QuestionData } from "../tool/types.js";
+import type { WrappingSelectItem } from "../view/components/wrapping-select.js";
 import {
 	chatNumberingFor,
 	computeFocusedOptionHasPreview,
@@ -7,8 +9,6 @@ import {
 	selectActiveView,
 	selectConfirmedIndicator,
 } from "./questionnaire-state.js";
-import type { QuestionAnswer, QuestionData } from "./types.js";
-import type { WrappingSelectItem } from "./wrapping-select.js";
 
 function q(over: Partial<QuestionData> = {}): QuestionData {
 	return {

@@ -3,7 +3,13 @@ import type { Theme } from "@mariozechner/pi-coding-agent";
 import type { Component, Input } from "@mariozechner/pi-tui";
 import { visibleWidth } from "@mariozechner/pi-tui";
 import { describe, expect, it } from "vitest";
-import { ChatRowView } from "./chat-row-view.js";
+import type { QuestionAnswer, QuestionData } from "../tool/types.js";
+import { ChatRowView } from "./components/chat-row-view.js";
+import { MultiSelectOptions, type MultiSelectOptionsProps } from "./components/multi-select-options.js";
+import type { PreviewPane } from "./components/preview/preview-pane.js";
+import { CANCEL_LABEL, SUBMIT_LABEL, SubmitPicker, type SubmitPickerProps } from "./components/submit-picker.js";
+import type { TabBar } from "./components/tab-bar.js";
+import type { WrappingSelectTheme } from "./components/wrapping-select.js";
 import {
 	buildDialog,
 	type DialogConfig,
@@ -16,12 +22,6 @@ import {
 	READY_PROMPT,
 	REVIEW_HEADING,
 } from "./dialog-builder.js";
-import { MultiSelectOptions, type MultiSelectOptionsProps } from "./multi-select-options.js";
-import type { PreviewPane } from "./preview-pane.js";
-import { CANCEL_LABEL, SUBMIT_LABEL, SubmitPicker, type SubmitPickerProps } from "./submit-picker.js";
-import type { TabBar } from "./tab-bar.js";
-import type { QuestionAnswer, QuestionData } from "./types.js";
-import type { WrappingSelectTheme } from "./wrapping-select.js";
 
 const theme = makeTheme() as unknown as Theme;
 

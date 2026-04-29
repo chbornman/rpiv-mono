@@ -1,5 +1,7 @@
 import { type Component, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
-import type { OptionListView } from "./option-list-view.js";
+import type { QuestionData } from "../../../tool/types.js";
+import type { StatefulView } from "../../stateful-view.js";
+import type { OptionListView } from "../option-list-view.js";
 import type { PreviewBlockRenderer } from "./preview-block-renderer.js";
 import {
 	bodyWidths,
@@ -9,8 +11,6 @@ import {
 	type PreviewLayoutMode,
 	STACKED_GAP_ROWS,
 } from "./preview-layout-decider.js";
-import type { StatefulView } from "./stateful-view.js";
-import type { QuestionData } from "./types.js";
 
 // ----- Re-exports for test imports — keep `./preview-pane.js` as the public surface -----
 export {

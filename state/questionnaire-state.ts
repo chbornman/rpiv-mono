@@ -1,13 +1,13 @@
-import type { ChatRowViewProps } from "./chat-row-view.js";
-import type { MultiSelectOptionsProps } from "./multi-select-options.js";
-import type { OptionListViewProps } from "./option-list-view.js";
-import type { PreviewPaneProps } from "./preview-pane.js";
+import type { QuestionAnswer, QuestionData } from "../tool/types.js";
+import type { ChatRowViewProps } from "../view/components/chat-row-view.js";
+import type { MultiSelectOptionsProps } from "../view/components/multi-select-options.js";
+import type { OptionListViewProps } from "../view/components/option-list-view.js";
+import type { PreviewPaneProps } from "../view/components/preview/preview-pane.js";
+import type { SubmitPickerProps } from "../view/components/submit-picker.js";
+import type { TabBarProps } from "../view/components/tab-bar.js";
+import type { WrappingSelectItem } from "../view/components/wrapping-select.js";
+import type { ActiveView } from "../view/stateful-view.js";
 import { ROW_INTENT_META } from "./row-intent.js";
-import type { ActiveView } from "./stateful-view.js";
-import type { SubmitPickerProps } from "./submit-picker.js";
-import type { TabBarProps } from "./tab-bar.js";
-import type { QuestionAnswer, QuestionData } from "./types.js";
-import type { WrappingSelectItem } from "./wrapping-select.js";
 
 /**
  * Canonical state for the questionnaire dialog. Single source of truth — both the

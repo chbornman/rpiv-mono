@@ -1,6 +1,6 @@
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth } from "@mariozechner/pi-tui";
-import type { StatefulView } from "./stateful-view.js";
+import type { StatefulView } from "../stateful-view.js";
 
 const ACTIVE_POINTER = "❯ ";
 const INACTIVE_POINTER = "  ";

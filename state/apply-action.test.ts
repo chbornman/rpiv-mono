@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type { QuestionAnswer, QuestionData } from "../tool/types.js";
+import type { WrappingSelectItem } from "../view/components/wrapping-select.js";
 import { type ApplyContext, applyAction } from "./apply-action.js";
 import type { QuestionnaireAction } from "./dispatch.js";
 import type { QuestionnaireState } from "./questionnaire-state.js";
-import type { QuestionAnswer, QuestionData } from "./types.js";
-import type { WrappingSelectItem } from "./wrapping-select.js";
 
 function makeQuestion(over: Partial<QuestionData> = {}): QuestionData {
 	return {
