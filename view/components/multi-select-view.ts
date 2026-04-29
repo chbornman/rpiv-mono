@@ -13,17 +13,12 @@ const BOX_LABEL_GAP = " ";
 // full prefix column. Wrap width still uses prefixVisibleWidth so naturalHeight matches render.
 const CONTINUATION_INDENT = "  ";
 
-/**
- * Per-tick projection of MultiSelectView state. The selector
- * (`selectMultiSelectProps`) pre-computes per-row `checked` + `active` so
- * `render()` is pure styling — no `state.multiSelectChecked.has(i)` or
- * `focused && i === state.optionIndex` predicates inside the render body.
- */
+export const MULTI_SUBMIT_LABEL = "Submit";
+
 export interface MultiSelectViewProps {
-	/** Per-option row state. Length === question.options.length. Order matches question.options[]. */
 	rows: ReadonlyArray<{ checked: boolean; active: boolean }>;
-	/** True iff the Next sentinel row owns the active pointer. */
 	nextActive: boolean;
+	nextLabel: string;
 }
 
 /**
@@ -43,7 +38,7 @@ export class MultiSelectView implements StatefulView<MultiSelectViewProps> {
 		private readonly theme: Theme,
 		private readonly question: QuestionData,
 	) {
-		this.props = { rows: [], nextActive: false };
+		this.props = { rows: [], nextActive: false, nextLabel: SENTINEL_LABELS.next };
 	}
 
 	setProps(props: MultiSelectViewProps): void {
@@ -80,12 +75,10 @@ export class MultiSelectView implements StatefulView<MultiSelectViewProps> {
 				}
 			}
 		}
-		// Next sentinel — pointer + bare label, no number / no checkbox. Visually distinct from
-		// option rows so users read it as an action ("commit and advance"), not a togglable row.
 		const nextPointer = this.props.nextActive ? this.theme.fg("accent", ACTIVE_POINTER) : INACTIVE_POINTER;
 		const nextLabel = this.props.nextActive
-			? this.theme.fg("accent", this.theme.bold(SENTINEL_LABELS.next))
-			: SENTINEL_LABELS.next;
+			? this.theme.fg("accent", this.theme.bold(this.props.nextLabel))
+			: this.props.nextLabel;
 		lines.push(truncateToWidth(`${nextPointer}${nextLabel}`, width, ""));
 		return lines;
 	}

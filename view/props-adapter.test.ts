@@ -118,8 +118,8 @@ function makeFixture(overQuestions?: QuestionData[]) {
 			resolve: (tab) => tab.multiSelect,
 			select: (s, ctx) => {
 				const q = ctx.questions[ctx.i];
-				if (!q) return { rows: [], nextActive: false };
-				return selectMultiSelectProps(s, q, ctx.activeView);
+				if (!q) return { rows: [], nextActive: false, nextLabel: "Next" };
+				return selectMultiSelectProps(s, q, ctx.activeView, ctx.i === ctx.questions.length - 1);
 			},
 		}),
 	];
@@ -226,8 +226,26 @@ describe("QuestionnairePropsAdapter.apply", () => {
 		const mso = tabsByIndex[0]!.multiSelect!;
 		expect(mso.setProps).toHaveBeenCalledTimes(1);
 		const arg = (mso.setProps as ReturnType<typeof vi.fn>).mock.calls[0]![0];
-		expect(arg).toMatchObject({ rows: expect.any(Array), nextActive: false });
+		expect(arg).toMatchObject({ rows: expect.any(Array), nextActive: false, nextLabel: "Next" });
 		expect(arg.rows[0]).toMatchObject({ active: true, checked: false });
+	});
+
+	it("multi-select on the LAST question receives nextLabel='Submit'", () => {
+		const questions = [makeQuestion(), makeQuestion({ multiSelect: true })];
+		const { adapter, tabsByIndex } = makeFixture(questions);
+		adapter.apply(makeState({ currentTab: 1 }));
+		const mso = tabsByIndex[1]!.multiSelect!;
+		const arg = (mso.setProps as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+		expect(arg.nextLabel).toBe("Submit");
+	});
+
+	it("multi-select on a non-last question receives nextLabel='Next'", () => {
+		const questions = [makeQuestion({ multiSelect: true }), makeQuestion()];
+		const { adapter, tabsByIndex } = makeFixture(questions);
+		adapter.apply(makeState({ currentTab: 0 }));
+		const mso = tabsByIndex[0]!.multiSelect!;
+		const arg = (mso.setProps as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0];
+		expect(arg.nextLabel).toBe("Next");
 	});
 
 	it("threads inputBuffer cell value through to OptionListView.setProps", () => {

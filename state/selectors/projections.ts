@@ -1,6 +1,7 @@
 import type { QuestionData } from "../../tool/types.js";
+import { SENTINEL_LABELS } from "../../tool/types.js";
 import type { ChatRowViewProps } from "../../view/components/chat-row-view.js";
-import type { MultiSelectViewProps } from "../../view/components/multi-select-view.js";
+import { MULTI_SUBMIT_LABEL, type MultiSelectViewProps } from "../../view/components/multi-select-view.js";
 import type { OptionListViewProps } from "../../view/components/option-list-view.js";
 import type { PreviewPaneProps } from "../../view/components/preview/preview-pane.js";
 import type { SubmitPickerProps } from "../../view/components/submit-picker.js";
@@ -11,22 +12,11 @@ import type { ActiveView, StatefulView } from "../../view/stateful-view.js";
 import type { QuestionnaireState } from "../state.js";
 import { chatNumberingFor, selectActiveTabItems, selectConfirmedIndicator } from "./derivations.js";
 
-/**
- * Per-tick projection for a `MultiSelectView` instance. Pre-computes
- * `checked` and `active` per row + the `nextActive` flag so the component's
- * render body is pure styling.
- *
- * Broadcast-safe: every multi-select tab's MSO receives a projection per
- * tick, but only the active tab actually renders its body via
- * `QuestionTabStrategy.bodyComponent`. Non-active MSO instances see
- * `focused === false` because activeView is gated on `state.notesVisible` /
- * `state.chatFocused` / Submit-tab — none of which are true while in options
- * mode on the active tab.
- */
 export function selectMultiSelectProps(
 	state: QuestionnaireState,
 	question: QuestionData,
 	activeView: ActiveView,
+	isLastQuestion: boolean,
 ): MultiSelectViewProps {
 	const focused = activeView === "options";
 	const rows: { checked: boolean; active: boolean }[] = [];
@@ -37,7 +27,8 @@ export function selectMultiSelectProps(
 		});
 	}
 	const nextActive = focused && state.optionIndex === question.options.length;
-	return { rows, nextActive };
+	const nextLabel = isLastQuestion ? MULTI_SUBMIT_LABEL : SENTINEL_LABELS.next;
+	return { rows, nextActive, nextLabel };
 }
 
 /**

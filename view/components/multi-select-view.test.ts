@@ -11,6 +11,7 @@ interface PropOverrides {
 	optionIndex?: number;
 	checkedIndices?: ReadonlySet<number>;
 	focused?: boolean;
+	nextLabel?: string;
 }
 
 function makeProps(question: QuestionData, over: PropOverrides = {}): MultiSelectViewProps {
@@ -22,7 +23,8 @@ function makeProps(question: QuestionData, over: PropOverrides = {}): MultiSelec
 		active: focused && i === optionIndex,
 	}));
 	const nextActive = focused && optionIndex === question.options.length;
-	return { rows, nextActive };
+	const nextLabel = over.nextLabel ?? "Next";
+	return { rows, nextActive, nextLabel };
 }
 
 function makeView(q: QuestionData, props: MultiSelectViewProps): MultiSelectView {
@@ -159,6 +161,14 @@ describe("MultiSelectView.render", () => {
 			expect(raw.startsWith("  ")).toBe(true);
 			expect(raw.startsWith("   ")).toBe(false);
 		}
+	});
+
+	it("renders props.nextLabel verbatim on the trailing sentinel row", () => {
+		const q = question();
+		const m = makeView(q, makeProps(q, { nextLabel: "Submit" }));
+		const lines = m.render(80);
+		expect(lines[lines.length - 1]).toContain("Submit");
+		expect(lines[lines.length - 1]).not.toContain("Next");
 	});
 
 	it("setProps mutates props visible to next render (active row moves)", () => {

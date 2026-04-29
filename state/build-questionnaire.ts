@@ -188,8 +188,9 @@ export function buildQuestionnaire(config: QuestionnaireBuildConfig): Questionna
 			resolve: (tab) => tab.multiSelect,
 			select: (s, ctx) => {
 				const q = ctx.questions[ctx.i];
-				if (!q) return { rows: [], nextActive: false };
-				return selectMultiSelectProps(s, q, ctx.activeView);
+				if (!q) return { rows: [], nextActive: false, nextLabel: SENTINEL_LABELS.next };
+				const isLast = ctx.i === ctx.questions.length - 1;
+				return selectMultiSelectProps(s, q, ctx.activeView, isLast);
 			},
 		}),
 	];

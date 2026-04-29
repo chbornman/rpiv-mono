@@ -34,7 +34,7 @@ function msoPropsFromState(question: QuestionData, state: DialogState, focused =
 		active: focused && i === state.optionIndex,
 	}));
 	const nextActive = focused && state.optionIndex === question.options.length;
-	return { rows, nextActive };
+	return { rows, nextActive, nextLabel: "Next" };
 }
 
 function submitPickerPropsFromState(state: DialogState, focused = true): SubmitPickerProps {
