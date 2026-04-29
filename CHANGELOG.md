@@ -7,6 +7,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Internal refactor: collapsed three index-aligned arrays (`optionListViewsByTab`, `previewPanes`, `multiSelectOptionsByTab`) into a single `ReadonlyArray<TabComponents>` across the props adapter, dialog builder, tab-content strategy, and `buildQuestionnaire` factory. The "question tab" is now a structural unit (one OptionListView + one PreviewPane + optional MultiSelectView) rather than an implicit length-coincidental invariant. New `view/tab-components.ts` module ships in the manifest. Behavior is byte-identical.
+- Internal cleanup: removed back-compat scaffolding now that the package has no downstream consumers — deleted the `state/questionnaire-state.ts` re-export barrel and the `chatNumberingFor` re-export at the package root. Made `QuestionnaireState.notesByTab` and `focus_options.optionIndex` required (dropped the legacy "no optionIndex preserves cursor" reducer branch and its test). Stripped historical-narration docstrings (extraction notes, "preserved verbatim" framing, internal artifact-id references).
+
 ## [1.0.5] - 2026-04-29
 
 ### Changed
