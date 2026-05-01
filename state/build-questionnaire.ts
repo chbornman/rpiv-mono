@@ -20,7 +20,6 @@ import { DialogView } from "../view/dialog-builder.js";
 import { QuestionnairePropsAdapter } from "../view/props-adapter.js";
 import type { StatefulView } from "../view/stateful-view.js";
 import type { TabBodyHeights, TabComponents } from "../view/tab-components.js";
-import type { InputBuffer } from "./input-buffer.js";
 import type { PerTabSelector } from "./selectors/contract.js";
 import { selectActivePreviewPaneIndex } from "./selectors/derivations.js";
 import {
@@ -41,13 +40,13 @@ export interface QuestionnaireBuildConfig {
 	itemsByTab: ReadonlyArray<readonly WrappingSelectItem[]>;
 	isMulti: boolean;
 	initialState: QuestionnaireState;
-	inputBuffer: InputBuffer;
 	getCurrentTab: () => number;
 }
 
 export interface QuestionnaireBuilt {
 	adapter: QuestionnairePropsAdapter;
 	notesInput: Input;
+	inlineInput: Input;
 	render: (width: number) => string[];
 	invalidate: () => void;
 }
@@ -97,13 +96,13 @@ class QuestionnaireBuilder {
 	private readonly itemsByTab: ReadonlyArray<readonly WrappingSelectItem[]>;
 	private readonly isMulti: boolean;
 	private readonly initialState: QuestionnaireState;
-	private readonly inputBuffer: InputBuffer;
 	private readonly getCurrentTab: () => number;
 
 	private readonly selectTheme: WrappingSelectTheme;
 	private readonly markdownTheme = getMarkdownTheme();
 	private readonly chatRow: ChatRowView;
 	private readonly notesInput = new Input();
+	private readonly inlineInput = new Input();
 	private readonly getTerminalWidth = () => this.tui.terminal.columns;
 
 	constructor(config: QuestionnaireBuildConfig) {
@@ -113,7 +112,6 @@ class QuestionnaireBuilder {
 		this.itemsByTab = config.itemsByTab;
 		this.isMulti = config.isMulti;
 		this.initialState = config.initialState;
-		this.inputBuffer = config.inputBuffer;
 		this.getCurrentTab = config.getCurrentTab;
 
 		this.selectTheme = this.makeSelectTheme();
@@ -271,7 +269,7 @@ class QuestionnaireBuilder {
 			questions: this.questions,
 			itemsByTab: this.itemsByTab,
 			tabsByIndex: tabs,
-			inputBuffer: this.inputBuffer,
+			inlineInput: this.inlineInput,
 			globalBindings,
 			perTabBindings,
 			extraInvalidatables: [this.notesInput],
@@ -282,6 +280,7 @@ class QuestionnaireBuilder {
 		return {
 			adapter,
 			notesInput: this.notesInput,
+			inlineInput: this.inlineInput,
 			render: (w) => dialog.render(w),
 			invalidate: () => adapter.invalidate(),
 		};

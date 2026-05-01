@@ -1,5 +1,5 @@
+import { Input } from "@mariozechner/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import { InputBuffer } from "../state/input-buffer.js";
 import type { PerTabSelector } from "../state/selectors/contract.js";
 import {
 	selectChatRowProps,
@@ -48,7 +48,7 @@ function makeFixture(overQuestions?: QuestionData[]) {
 	const submitPicker = makeStatefulView<SubmitPickerProps>();
 	const tabBar = makeStatefulView<TabBarProps>();
 	const dialog = makeStatefulView<DialogProps>();
-	const inputBuffer = new InputBuffer();
+	const inlineInput = new Input();
 	const tui = { requestRender: vi.fn() };
 
 	const globalBindings: ReadonlyArray<BoundGlobalBinding> = [
@@ -74,7 +74,7 @@ function makeFixture(overQuestions?: QuestionData[]) {
 		questions,
 		itemsByTab,
 		tabsByIndex,
-		inputBuffer,
+		inlineInput,
 		globalBindings,
 		perTabBindings,
 	});
@@ -87,7 +87,7 @@ function makeFixture(overQuestions?: QuestionData[]) {
 		submitPicker,
 		tabBar,
 		questions,
-		inputBuffer,
+		inlineInput,
 	};
 }
 
@@ -193,9 +193,9 @@ describe("QuestionnairePropsAdapter.apply", () => {
 		expect(arg.nextLabel).toBe("Next");
 	});
 
-	it("threads inputBuffer cell value through to OptionListView.setProps", () => {
-		const { adapter, tabsByIndex, inputBuffer } = makeFixture();
-		inputBuffer.set("typed");
+	it("threads inlineInput.getValue() through to OptionListView.setProps", () => {
+		const { adapter, tabsByIndex, inlineInput } = makeFixture();
+		inlineInput.setValue("typed");
 		adapter.apply(makeState());
 		expect(tabsByIndex[0]!.optionList.setProps).toHaveBeenLastCalledWith(
 			expect.objectContaining({ inputBuffer: "typed" }),

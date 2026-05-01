@@ -522,7 +522,7 @@ describe("routeKey — inputMode (Type something)", () => {
 		});
 	});
 
-	it("printable bytes return ignore (dialog forwards to WrappingSelect.appendInput)", () => {
+	it("printable bytes return ignore (dialog forwards to inlineInput.handleInput)", () => {
 		expect(routeKey("x", makeState({ inputMode: true }), makeRuntime({ currentItem: other }))).toEqual({
 			kind: "ignore",
 		});

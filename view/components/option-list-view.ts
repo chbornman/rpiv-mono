@@ -14,9 +14,10 @@ export interface OptionListViewConfig {
 
 /**
  * Per-tick projection of OptionListView state. After Phase 11b, `inputBuffer`
- * is part of the props bag — the session-owned `InputBuffer` cell value flows
- * here per tick. `OptionListView` is now purely props-driven; the imperative
- * buffer surface and read-back getters are gone.
+ * is part of the props bag — the session-owned `inlineInput` (a headless
+ * `pi-tui` Input instance) supplies its current `getValue()` here per tick.
+ * `OptionListView` is purely props-driven; the imperative buffer surface and
+ * read-back getters are gone.
  */
 export interface OptionListViewProps {
 	selectedIndex: number;

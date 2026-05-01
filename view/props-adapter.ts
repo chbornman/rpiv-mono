@@ -1,4 +1,4 @@
-import type { InputBuffer } from "../state/input-buffer.js";
+import type { Input } from "@mariozechner/pi-tui";
 import type { BindingContext, PerTabBindingContext } from "../state/selectors/contract.js";
 import { selectActivePreviewPaneIndex } from "../state/selectors/derivations.js";
 import { selectActiveView } from "../state/selectors/focus.js";
@@ -18,7 +18,7 @@ export interface QuestionnairePropsAdapterConfig {
 	questions: readonly QuestionData[];
 	itemsByTab: ReadonlyArray<readonly WrappingSelectItem[]>;
 	tabsByIndex: ReadonlyArray<TabComponents>;
-	inputBuffer: InputBuffer;
+	inlineInput: Input;
 	globalBindings: ReadonlyArray<BoundGlobalBinding>;
 	perTabBindings: ReadonlyArray<BoundPerTabBinding>;
 	/**
@@ -34,16 +34,16 @@ export interface QuestionnairePropsAdapterConfig {
  * two binding registries. `globalBindings` covers the cross-tab components
  * (chatRow, dialog, submitPicker?, tabBar?); `perTabBindings` covers the
  * per-tab kinds (optionList, preview, multiSelect?). The hand-coded fan-out
- * collapses to one global loop + one nested per-tab loop. The `inputBuffer`
- * cell is read per tick into ctx so `selectOptionListProps` sees the live
- * value.
+ * collapses to one global loop + one nested per-tab loop. The inline-Other
+ * value is read from the headless `inlineInput` instance per tick into ctx so
+ * `selectOptionListProps` sees the live value.
  */
 export class QuestionnairePropsAdapter {
 	private readonly tui: QuestionnairePropsAdapterConfig["tui"];
 	private readonly questions: readonly QuestionData[];
 	private readonly itemsByTab: ReadonlyArray<readonly WrappingSelectItem[]>;
 	private readonly tabsByIndex: ReadonlyArray<TabComponents>;
-	private readonly inputBuffer: InputBuffer;
+	private readonly inlineInput: Input;
 	private readonly globalBindings: ReadonlyArray<BoundGlobalBinding>;
 	private readonly perTabBindings: ReadonlyArray<BoundPerTabBinding>;
 	private readonly extraInvalidatables: ReadonlyArray<Invalidatable>;
@@ -53,7 +53,7 @@ export class QuestionnairePropsAdapter {
 		this.questions = config.questions;
 		this.itemsByTab = config.itemsByTab;
 		this.tabsByIndex = config.tabsByIndex;
-		this.inputBuffer = config.inputBuffer;
+		this.inlineInput = config.inlineInput;
 		this.globalBindings = config.globalBindings;
 		this.perTabBindings = config.perTabBindings;
 		this.extraInvalidatables = config.extraInvalidatables ?? [];
@@ -70,7 +70,7 @@ export class QuestionnairePropsAdapter {
 			itemsByTab: this.itemsByTab,
 			totalQuestions,
 			activeView,
-			inputBuffer: this.inputBuffer.get(),
+			inputBuffer: this.inlineInput.getValue(),
 			activePreviewPane,
 		};
 

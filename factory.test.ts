@@ -831,3 +831,129 @@ describe("ask_user_question — notes pre-answer (Slice 5 notes UX)", () => {
 		expect(r?.details.answers[0].notes).toBeUndefined();
 	});
 });
+
+describe("ask_user_question — bracketed paste + Kitty CSI-u (dictation parity)", () => {
+	const freeTextParams = {
+		questions: [
+			{
+				question: "Name?",
+				header: "Name",
+				options: [
+					{ label: "Default", description: "Default option" },
+					{ label: "Second", description: "Second option" },
+				],
+			},
+		],
+	};
+
+	it("bracketed paste on the inline-Other row commits the pasted text as kind:'custom'", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.DOWN); // → Second
+			c.handleInput(KEY.DOWN); // → Type something. (inputMode=true)
+			// Wispr Flow / FluidVoice ReliablePaste deliver bracketed paste:
+			c.handleInput("\x1b[200~Hello world\x1b[201~");
+			c.handleInput(KEY.ENTER);
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", freeTextParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.cancelled).toBe(false);
+		expect(r?.details.answers[0].kind).toBe("custom");
+		expect(r?.details.answers[0].answer).toBe("Hello world");
+	});
+
+	it("bracketed paste split across two handleInput calls is reassembled correctly", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.DOWN);
+			c.handleInput(KEY.DOWN); // inputMode
+			// Stdin chunks the paste — pi-tui's Input.pasteBuffer accumulator handles split chunks.
+			c.handleInput("\x1b[200~Hel");
+			c.handleInput("lo\x1b[201~");
+			c.handleInput(KEY.ENTER);
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", freeTextParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.answers[0].answer).toBe("Hello");
+	});
+
+	it("bracketed paste strips embedded \\n/\\r and converts \\t to 4 spaces (single-line invariant)", async () => {
+		// Wispr Flow auto-chunks long dictations into multiple bracketed pastes BUT a single
+		// paste may contain literal newlines. handlePaste at input.js:356 cleans them.
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.DOWN);
+			c.handleInput(KEY.DOWN);
+			c.handleInput("\x1b[200~Hello\nworld\twith\rmix\x1b[201~");
+			c.handleInput(KEY.ENTER);
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", freeTextParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		// \n and \r stripped entirely; \t → 4 spaces.
+		expect(r?.details.answers[0].answer).toBe("Helloworld    withmix");
+	});
+
+	it("Kitty CSI-u printables (\\x1b[97u …) are decoded and committed", async () => {
+		// On Warp/Ghostty/kitty/WezTerm/modern Alacritty with Kitty flags 1+2+4,
+		// every printable arrives as a CSI-u sequence. Input.handleInput decodes
+		// these via decodeKittyPrintable BEFORE the C0 control-char rejection.
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.DOWN);
+			c.handleInput(KEY.DOWN);
+			c.handleInput("\x1b[97u"); // 'a'
+			c.handleInput("\x1b[98u"); // 'b'
+			c.handleInput("\x1b[99u"); // 'c'
+			c.handleInput(KEY.ENTER);
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", freeTextParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.answers[0].kind).toBe("custom");
+		expect(r?.details.answers[0].answer).toBe("abc");
+	});
+
+	it("bracketed paste followed by typed chars + backspace produces the expected merged value", async () => {
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.DOWN);
+			c.handleInput(KEY.DOWN);
+			c.handleInput("\x1b[200~Hi\x1b[201~"); // paste "Hi" → "Hi"
+			c.handleInput("!"); // append "!" → "Hi!"
+			c.handleInput("\x7f"); // backspace → "Hi"
+			c.handleInput(KEY.ENTER);
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", freeTextParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.answers[0].answer).toBe("Hi");
+	});
+
+	it("raw multi-character chunk (no bracketed paste markers) appends as-is", async () => {
+		// Terminal.app does not enable bracketed paste; macOS Dictation and Wispr
+		// fallback can deliver a contiguous string without ESC framing. The Input
+		// hot path falls through to insertCharacter at input.js:171 for any chunk
+		// with no control chars.
+		const tool = register();
+		const { custom } = driveCustom((c) => {
+			c.handleInput(KEY.DOWN);
+			c.handleInput(KEY.DOWN); // inputMode
+			c.handleInput("Hello world"); // raw, unframed multi-char chunk
+			c.handleInput(KEY.ENTER);
+		});
+		const ctx = { hasUI: true, ui: { custom } } as never;
+		const r = (await tool.execute?.("tc", freeTextParams as never, undefined as never, undefined as never, ctx)) as
+			| ToolResult
+			| undefined;
+		expect(r?.details.answers[0].kind).toBe("custom");
+		expect(r?.details.answers[0].answer).toBe("Hello world");
+	});
+});

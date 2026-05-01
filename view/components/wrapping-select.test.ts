@@ -39,29 +39,6 @@ describe("WrappingSelect.setSelectedIndex", () => {
 	});
 });
 
-describe("WrappingSelect.appendInput + backspaceInput (unicode aware)", () => {
-	it("strips control chars on append", () => {
-		const s = new WrappingSelect([{ kind: "other", label: "a" }], 10, identityTheme);
-		s.setSelectedIndex(0);
-		s.appendInput("abc\x07\x1bdef");
-		expect(s.getInputBuffer()).toBe("abcdef");
-	});
-	it("backspace removes one visual char (Array.from for unicode)", () => {
-		const s = new WrappingSelect([{ kind: "other", label: "a" }], 10, identityTheme);
-		s.setSelectedIndex(0);
-		s.appendInput("a😀b");
-		s.backspaceInput();
-		expect(s.getInputBuffer()).toBe("a😀");
-		s.backspaceInput();
-		expect(s.getInputBuffer()).toBe("a");
-	});
-	it("backspace on empty buffer is a no-op", () => {
-		const s = new WrappingSelect([{ kind: "other", label: "a" }], 10, identityTheme);
-		s.backspaceInput();
-		expect(s.getInputBuffer()).toBe("");
-	});
-});
-
 describe("WrappingSelect.render — visible window", () => {
 	const items: WrappingSelectItem[] = Array.from({ length: 20 }, (_, i) => ({
 		kind: "option" as const,
@@ -101,7 +78,7 @@ describe("WrappingSelect.render — inline input when kind:'other' + focused", (
 		const s = new WrappingSelect([{ kind: "other", label: "pick" }], 1, identityTheme);
 		s.setSelectedIndex(0);
 		s.setFocused(true);
-		s.appendInput("hi");
+		s.setInputBuffer("hi");
 		const lines = s.render(40);
 		expect(lines[0]).toContain("hi");
 		expect(lines[0]).toContain("▌");
@@ -109,7 +86,7 @@ describe("WrappingSelect.render — inline input when kind:'other' + focused", (
 	it("renders label (not input) when kind:'other' but NOT focused", () => {
 		const s = new WrappingSelect([{ kind: "other", label: "pick" }], 1, identityTheme);
 		s.setFocused(false);
-		s.appendInput("buf");
+		s.setInputBuffer("buf");
 		const lines = s.render(40);
 		expect(lines[0]).toContain("pick");
 		expect(lines[0]).not.toContain("▌");
@@ -119,7 +96,7 @@ describe("WrappingSelect.render — inline input when kind:'other' + focused", (
 		const s = new WrappingSelect([{ kind: "other", label: "pick" }], 1, identityTheme);
 		s.setSelectedIndex(0);
 		s.setFocused(true);
-		s.appendInput("this is a really long input that exceeds the width");
+		s.setInputBuffer("this is a really long input that exceeds the width");
 		const narrowWidth = 20;
 		const lines = s.render(narrowWidth);
 		expect(visibleWidth(lines[0])).toBeLessThanOrEqual(narrowWidth);
@@ -131,7 +108,7 @@ describe("WrappingSelect.render — inline input when kind:'other' + focused", (
 		const s = new WrappingSelect([{ kind: "other", label: "pick" }], 1, identityTheme);
 		s.setSelectedIndex(0);
 		s.setFocused(true);
-		s.appendInput("a".repeat(16));
+		s.setInputBuffer("a".repeat(16));
 		const width = 20;
 		const lines = s.render(width);
 		expect(visibleWidth(lines[0])).toBeLessThanOrEqual(width);
@@ -141,7 +118,7 @@ describe("WrappingSelect.render — inline input when kind:'other' + focused", (
 		const s = new WrappingSelect([{ kind: "other", label: "pick" }], 1, identityTheme);
 		s.setSelectedIndex(0);
 		s.setFocused(true);
-		s.appendInput("x".repeat(200));
+		s.setInputBuffer("x".repeat(200));
 		const width = 10;
 		const lines = s.render(width);
 		expect(visibleWidth(lines[0])).toBeLessThanOrEqual(width);
@@ -152,7 +129,7 @@ describe("WrappingSelect.render — inline input when kind:'other' + focused", (
 		const s = new WrappingSelect([{ kind: "other", label: "pick" }], 1, identityTheme);
 		s.setSelectedIndex(0);
 		s.setFocused(true);
-		s.appendInput("😀".repeat(30));
+		s.setInputBuffer("😀".repeat(30));
 		const width = 20;
 		const lines = s.render(width);
 		expect(visibleWidth(lines[0])).toBeLessThanOrEqual(width);
@@ -166,7 +143,7 @@ describe("WrappingSelect.render — inline input when kind:'other' + focused", (
 		});
 		s.setSelectedIndex(0);
 		s.setFocused(true);
-		s.appendInput("hello world");
+		s.setInputBuffer("hello world");
 		const width = 12;
 		const lines = s.render(width);
 		expect(visibleWidth(lines[0])).toBeLessThanOrEqual(width);
@@ -315,7 +292,7 @@ describe("WrappingSelect.setConfirmedIndex", () => {
 		s.setSelectedIndex(1);
 		s.setFocused(true);
 		s.setConfirmedIndex(1, "Hello");
-		s.appendInput("World");
+		s.setInputBuffer("World");
 		const lines = s.render(40);
 		expect(lines[1]).toContain("World");
 		expect(lines[1]).toContain("▌");
@@ -356,25 +333,6 @@ describe("WrappingSelect.setConfirmedIndex", () => {
 			expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 		}
 		expect(lines.some((l) => l.includes("✔"))).toBe(true);
-	});
-});
-
-describe("WrappingSelect.setInputBuffer", () => {
-	it("sets the buffer to the given text", () => {
-		const s = new WrappingSelect([{ kind: "other", label: "x" }], 1, identityTheme);
-		s.setInputBuffer("Hello");
-		expect(s.getInputBuffer()).toBe("Hello");
-	});
-	it("strips control chars on set (parity with appendInput)", () => {
-		const s = new WrappingSelect([{ kind: "other", label: "x" }], 1, identityTheme);
-		s.setInputBuffer("ab\x07c\x1bd");
-		expect(s.getInputBuffer()).toBe("abcd");
-	});
-	it("appendInput continues from the set buffer", () => {
-		const s = new WrappingSelect([{ kind: "other", label: "x" }], 1, identityTheme);
-		s.setInputBuffer("Hello");
-		s.appendInput("!");
-		expect(s.getInputBuffer()).toBe("Hello!");
 	});
 });
 

@@ -4,14 +4,14 @@ import { type QuestionData, type QuestionnaireResult, type QuestionParams, SENTI
 import type { WrappingSelectItem } from "../view/components/wrapping-select.js";
 import type { QuestionnairePropsAdapter } from "../view/props-adapter.js";
 import { buildQuestionnaire } from "./build-questionnaire.js";
-import { InputBuffer } from "./input-buffer.js";
 import { type QuestionnaireAction, routeKey } from "./key-router.js";
 import { computeFocusedOptionHasPreview } from "./selectors/derivations.js";
 import type { QuestionnaireRuntime, QuestionnaireState } from "./state.js";
 import { type ApplyContext, type Effect, reduce } from "./state-reducer.js";
 
-const BACKSPACE_CHARS = new Set(["\x7f", "\b"]);
-const ESC_SEQUENCE_PREFIX = "\x1b";
+// Module-level constant; reused for cursor-end mutations after setValue rehydration.
+// Ctrl-E → tui.editor.cursorLineEnd (public path; pi-tui keybindings.js:25-28).
+const CURSOR_END = "\x05";
 
 export interface QuestionnaireSessionConfig {
 	tui: { terminal: { columns: number }; requestRender(): void };
@@ -51,13 +51,13 @@ function initialState(): QuestionnaireState {
  */
 export class QuestionnaireSession {
 	private state: QuestionnaireState = initialState();
-	private readonly inputBuffer = new InputBuffer();
 
 	private readonly questions: readonly QuestionData[];
 	private readonly isMulti: boolean;
 	private readonly itemsByTab: WrappingSelectItem[][];
 
 	private readonly notesInput: Input;
+	private readonly inlineInput: Input;
 	private readonly viewAdapter: QuestionnairePropsAdapter;
 
 	private readonly tui: QuestionnaireSessionConfig["tui"];
@@ -81,11 +81,11 @@ export class QuestionnaireSession {
 			itemsByTab: this.itemsByTab,
 			isMulti: this.isMulti,
 			initialState: this.state,
-			inputBuffer: this.inputBuffer,
 			getCurrentTab: () => this.state.currentTab,
 		});
 
 		this.notesInput = built.notesInput;
+		this.inlineInput = built.inlineInput;
 		this.viewAdapter = built.adapter;
 
 		this.component = {
@@ -122,10 +122,11 @@ export class QuestionnaireSession {
 	private runEffect(effect: Effect): void {
 		switch (effect.kind) {
 			case "set_input_buffer":
-				this.inputBuffer.set(effect.value);
+				this.inlineInput.setValue(effect.value);
+				this.inlineInput.handleInput(CURSOR_END);
 				return;
 			case "clear_input_buffer":
-				this.inputBuffer.clear();
+				this.inlineInput.setValue("");
 				return;
 			case "set_notes_value":
 				this.notesInput.setValue(effect.value);
@@ -143,25 +144,28 @@ export class QuestionnaireSession {
 	}
 
 	/**
-	 * Per-keystroke `ignore` fast path: mutates the session-owned input buffer
-	 * directly (no reducer pass) and re-runs `viewAdapter.apply(state)` so the
-	 * new buffer value flows out via `selectOptionListProps`.
+	 * Per-keystroke `ignore` fast path: delegates to the headless `inlineInput`
+	 * Input so bracketed-paste accumulator (`input.js:33-63`) and Kitty CSI-u
+	 * decode (`input.js:155-163`) take effect. Cursor is NOT force-reset here —
+	 * doing so would corrupt split-chunk pastes (a `\x05` byte mid-paste lands
+	 * verbatim in `pasteBuffer` and survives `handlePaste`'s narrow strip).
+	 * Cursor advances naturally via `insertCharacter` on typing/paste; cursor-
+	 * movement keys (Left/Right/Home/End/word-jumps) are now functional, with
+	 * the always-end visual cursor marker drawn independently by
+	 * `WrappingSelect.renderInlineInputRow`. `viewAdapter.apply` is called
+	 * directly without a reducer round-trip — preserves the D3 fast-path
+	 * latency profile from Phase 11.
 	 */
 	private handleIgnoreInline(data: string): void {
 		if (!this.state.inputMode) return;
-		if (BACKSPACE_CHARS.has(data)) {
-			this.inputBuffer.backspace();
-			this.viewAdapter.apply(this.state);
-		} else if (data && !data.startsWith(ESC_SEQUENCE_PREFIX)) {
-			this.inputBuffer.append(data);
-			this.viewAdapter.apply(this.state);
-		}
+		this.inlineInput.handleInput(data);
+		this.viewAdapter.apply(this.state);
 	}
 
 	private runtime(): QuestionnaireRuntime {
 		return {
 			keybindings: getKeybindings(),
-			inputBuffer: this.inputBuffer.get(),
+			inputBuffer: this.inlineInput.getValue(),
 			questions: this.questions,
 			isMulti: this.isMulti,
 			currentItem: this.currentItem(),

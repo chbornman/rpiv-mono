@@ -121,26 +121,8 @@ export class WrappingSelect implements Component {
 		this.confirmedLabelOverride = labelOverride;
 	}
 
-	getInputBuffer(): string {
-		return this.inputBuffer;
-	}
-
 	setInputBuffer(text: string): void {
-		this.inputBuffer = this.stripControlChars(text);
-	}
-
-	appendInput(text: string): void {
-		const printable = this.stripControlChars(text);
-		if (printable) this.inputBuffer += printable;
-	}
-
-	backspaceInput(): void {
-		if (this.inputBuffer.length === 0) return;
-		this.inputBuffer = Array.from(this.inputBuffer).slice(0, -1).join("");
-	}
-
-	clearInputBuffer(): void {
-		this.inputBuffer = "";
+		this.inputBuffer = text;
 	}
 
 	/** Intentionally empty — input is routed at the container level. */
@@ -251,11 +233,5 @@ export class WrappingSelect implements Component {
 		if (!description) return [];
 		const wrapped = wrapTextWithAnsi(description, contentWidth);
 		return wrapped.map((segment) => `${continuationPrefix}${this.theme.description(segment)}`);
-	}
-
-	private stripControlChars(text: string): string {
-		return Array.from(text)
-			.filter((c) => c >= " ")
-			.join("");
 	}
 }

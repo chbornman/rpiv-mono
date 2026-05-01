@@ -31,7 +31,6 @@
     "LICENSE",
     "README.md",
     "state/build-questionnaire.ts",
-    "state/input-buffer.ts",
     "state/key-router.ts",
     "state/questionnaire-session.ts",
     "state/row-intent.ts",
