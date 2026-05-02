@@ -67,8 +67,7 @@ export const QuestionSchema = Type.Object({
 	}),
 	header: Type.String({
 		maxLength: MAX_HEADER_LENGTH,
-		description:
-			'Very short label displayed as a chip/tag (max 12 chars). Examples: "Auth method", "Library", "Approach".',
+		description: `MAX ${MAX_HEADER_LENGTH} CHARACTERS — hard limit, requests over the limit are rejected. Very short chip/tag shown next to the question. Examples: "Auth method", "Library", "Approach".`,
 	}),
 	options: Type.Array(OptionSchema, {
 		minItems: MIN_OPTIONS,
