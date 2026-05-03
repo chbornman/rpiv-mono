@@ -56,6 +56,53 @@ With the SDK present, locale resolves from `--locale <code>` → `~/.config/rpiv
 
 - **`ask_user_question`** — present one or more structured questions, each with 2+ options, optional `multiSelect`, optional per-option `preview`, and an optional free-text "Other" fallback. Returns the user's selection(s) plus any notes. See the tool's `promptGuidelines` for usage policy.
 
+### Schema
+
+```ts
+ask_user_question({
+  questions: [
+    {
+      question: string,            // full question text, ends with "?"
+      header: string,              // chip label, max 12 chars
+      options: [
+        {
+          label: string,           // 1-5 words, max 60 chars
+          description: string,     // explains the choice / its trade-off
+          preview?: string,        // optional markdown shown next to options
+        },
+        // … 2-4 options total
+      ],
+      multiSelect?: boolean,       // default false
+    },
+    // … 1-4 questions total
+  ]
+})
+```
+
+Reserved option labels (rejected at validation): `"Other"`, plus the runtime sentinels (`"Type something."`, `"Chat about this"`, `"Next →"`).
+
+Returns:
+
+```ts
+{
+  content: [{ type: "text", text: string }], // human-readable envelope or DECLINE_MESSAGE
+  details: {
+    answers: Array<{
+      questionIndex: number,
+      question: string,
+      kind: "option" | "custom" | "chat" | "multi",
+      answer: string | null,
+      selected?: string[],         // present for multi-select
+      notes?: string,              // free-text note, when typed
+      preview?: string,            // echoed back when option carried a preview
+    }>,
+    cancelled: boolean,
+    error?: "no_ui" | "no_questions" | "empty_options" | "too_many_questions"
+          | "duplicate_question" | "duplicate_option_label" | "reserved_label",
+  }
+}
+```
+
 ## License
 
 MIT
