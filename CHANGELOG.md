@@ -5,7 +5,7 @@ All notable changes to `@juicesharp/rpiv-ask-user-question` are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.4] - 2026-05-03
 
 ### Changed
 - `@juicesharp/rpiv-i18n` is now a soft optional peer (`peerDependenciesMeta.optional: true`). The bridge and module-init `registerStrings` call use a dynamic `await import()` inside try/catch, so a standalone install of just `rpiv-ask-user-question` no longer fails with `Cannot find module '@juicesharp/rpiv-i18n'` — the dialog stays online with English-only UI when the SDK isn't present, and lights up localization automatically when it is.
