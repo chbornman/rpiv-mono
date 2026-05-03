@@ -32,6 +32,7 @@ Let the model ask you structured clarifying questions instead of guessing. `rpiv
 |---|---|
 | ![Single-question dialog](https://raw.githubusercontent.com/juicesharp/rpiv-mono/main/packages/rpiv-ask-user-question/docs/single-question.jpg) | ![Multi-tab + ASCII preview](https://raw.githubusercontent.com/juicesharp/rpiv-mono/main/packages/rpiv-ask-user-question/docs/multi-tab-preview.jpg) |
 | ![Multi-select with checkboxes](https://raw.githubusercontent.com/juicesharp/rpiv-mono/main/packages/rpiv-ask-user-question/docs/multi-select.jpg) | ![Submit tab review](https://raw.githubusercontent.com/juicesharp/rpiv-mono/main/packages/rpiv-ask-user-question/docs/submit-tab.jpg) |
+| ![Localized UI — German](https://raw.githubusercontent.com/juicesharp/rpiv-mono/main/packages/rpiv-ask-user-question/docs/localized-german-ui.jpg) | |
 
 ## Install
 
