@@ -295,6 +295,75 @@ describe("PreviewPane.naturalHeight", () => {
 	});
 });
 
+describe("PreviewPane.maxNaturalHeight", () => {
+	const mixedQuestion: QuestionData = {
+		question: "pick",
+		header: "pick",
+		options: [
+			{ label: "short", description: "", preview: "tiny" },
+			{ label: "long", description: "", preview: "x".repeat(800) },
+			{ label: "no-preview", description: "" },
+		],
+	};
+
+	it("multiSelect returns options height (no preview branch)", () => {
+		const multiQ: QuestionData = { ...mixedQuestion, multiSelect: true };
+		const { pane } = makePane(multiQ, () => 120);
+		const w = 120;
+		expect(pane.maxNaturalHeight(w)).toBe(pane.render(w).length);
+	});
+
+	it("no-preview question returns options height (early-return parity with naturalHeight)", () => {
+		const q: QuestionData = {
+			question: "q",
+			header: "q",
+			options: [
+				{ label: "A", description: "" },
+				{ label: "B", description: "" },
+			],
+		};
+		const { pane } = makePane(q, () => 120);
+		expect(pane.maxNaturalHeight(120)).toBe(pane.render(120).length);
+		expect(pane.maxNaturalHeight(80)).toBe(pane.render(80).length);
+	});
+
+	it("side-by-side: maxNaturalHeight >= naturalHeight for any selectedIndex", () => {
+		const { pane, optionListView } = makePane(mixedQuestion, () => 120);
+		const w = 120;
+		const max = pane.maxNaturalHeight(w);
+		for (let i = 0; i < mixedQuestion.options.length; i++) {
+			optionListView.setProps({ selectedIndex: i, focused: true, inputBuffer: "" });
+			pane.setProps({ notesVisible: false, selectedIndex: i, focused: true });
+			expect(pane.naturalHeight(w)).toBeLessThanOrEqual(max);
+		}
+	});
+
+	it("stacked: maxNaturalHeight >= naturalHeight for any selectedIndex", () => {
+		const { pane, optionListView } = makePane(mixedQuestion, () => 80);
+		const w = 80;
+		const max = pane.maxNaturalHeight(w);
+		for (let i = 0; i < mixedQuestion.options.length; i++) {
+			optionListView.setProps({ selectedIndex: i, focused: true, inputBuffer: "" });
+			pane.setProps({ notesVisible: false, selectedIndex: i, focused: true });
+			expect(pane.naturalHeight(w)).toBeLessThanOrEqual(max);
+		}
+	});
+
+	it("maxNaturalHeight is index-independent (does not depend on the current props.selectedIndex)", () => {
+		const { pane: paneA, optionListView: olA } = makePane(mixedQuestion, () => 120);
+		olA.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
+		paneA.setProps({ notesVisible: false, selectedIndex: 0, focused: true });
+		const maxA = paneA.maxNaturalHeight(120);
+
+		const { pane: paneB, optionListView: olB } = makePane(mixedQuestion, () => 120);
+		olB.setProps({ selectedIndex: 1, focused: true, inputBuffer: "" });
+		paneB.setProps({ notesVisible: false, selectedIndex: 1, focused: true });
+		const maxB = paneB.maxNaturalHeight(120);
+
+		expect(maxA).toBe(maxB);
+	});
+});
+
 describe("PreviewPane — left-aligned preview with top/left padding (side-by-side only)", () => {
 	const question: QuestionData = {
 		question: "pick",
