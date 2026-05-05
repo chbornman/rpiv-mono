@@ -7,6 +7,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Tool prompt: dropped an ambiguous "This …" guideline whose antecedent could be read as either the question or the option, leading callers to phrase options inconsistently (#10).
+
 ## [1.1.4] - 2026-05-03
 
 ### Changed
