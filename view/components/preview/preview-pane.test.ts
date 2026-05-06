@@ -479,8 +479,14 @@ describe("PreviewPane — left-aligned preview with top/left padding (side-by-si
 });
 
 describe("PreviewPane — slack donation to left column", () => {
-	it("narrow previews engage donation — left column > MIN_LEFT, MD at wider offset", () => {
-		const narrowQ: QuestionData = {
+	// 26-char label → labelDriven > MIN_LEFT, escapes the compact-content guard so
+	// donation actually engages. Short labels would suppress donation by design (Stage 5).
+	const LONG_LABEL = "Verbose Descriptive Option";
+
+	it("short labels (compact-content guard) → no donation, MD at MIN_LEFT-based offset", () => {
+		// npm/yarn-style: 1-char labels signal compact UI. Even with a tiny preview that
+		// could donate huge slack, the compact guard returns labelDriven=MIN_LEFT(30).
+		const compactQ: QuestionData = {
 			question: "pick",
 			header: "pick",
 			options: [
@@ -488,8 +494,33 @@ describe("PreviewPane — slack donation to left column", () => {
 				{ label: "B", description: "" },
 			],
 		};
+		const { pane, optionListView, items } = makePane(compactQ, () => 200);
+		const tabs = [{ multiSelect: false }];
+		const itemsByTab = [items];
+		const questions = [compactQ];
+		pane.setGlobalLeftWidth((w) => crossTabLeftWidthWithDonation(tabs, itemsByTab, questions, w));
+		optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
+
+		const result = crossTabLeftWidthWithDonation(tabs, itemsByTab, questions, 200);
+		expect(result).toBe(MIN_LEFT);
+
+		const lines = pane.render(200);
+		const mdLine = lines.find((l) => /MD\[\d+\]:/.test(l));
+		expect(mdLine).toBeDefined();
+		// MD starts at: MIN_LEFT(30) + gap(2) + pad(1) + border(1) + innerPad(1) = 35.
+		expect(mdLine!.indexOf("MD[")).toBe(MIN_LEFT + PREVIEW_COLUMN_GAP + 1 + 2);
+	});
+
+	it("long labels + narrow previews → donation engaged, MD at wider offset", () => {
+		const narrowQ: QuestionData = {
+			question: "pick",
+			header: "pick",
+			options: [
+				{ label: LONG_LABEL, description: "", preview: "tiny" },
+				{ label: "B", description: "" },
+			],
+		};
 		const { pane, optionListView, items } = makePane(narrowQ, () => 120);
-		// Override with donation-aware getter — makePane auto-injects label-driven only.
 		const tabs = [{ multiSelect: false }];
 		const itemsByTab = [items];
 		const questions = [narrowQ];
@@ -497,36 +528,31 @@ describe("PreviewPane — slack donation to left column", () => {
 		optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
 
 		const labelDriven = adaptiveLeftWidth(items, 3, 120);
-		expect(labelDriven).toBe(MIN_LEFT); // 30
+		expect(labelDriven).toBeGreaterThan(MIN_LEFT);
 
 		const lines = pane.render(120);
 		const mdLine = lines.find((l) => /MD\[\d+\]:/.test(l));
 		expect(mdLine).toBeDefined();
-
-		const mdIdx = mdLine!.indexOf("MD[");
-		// Donation widens left column. At width 120, crossTabLeftWidthWithDonation returns 73:
-		//   previewSourceWidth = 4 ("tiny"), per-question budget = 4+5 = 9 → floored at MIN_PREVIEW_WIDTH(45)
-		//   previewBudget = 45, slackDonation = 120 − 2 − 45 = 73, ceiling = 120 − 2 − 45 = 73
-		//   result = min(max(30, 73), 73) = 73
+		// At width 120, donation widens left column to the ceiling:
+		//   previewBudget = 45 (MIN_PREVIEW_WIDTH floor), slackDonation = 120 − 2 − 45 = 73
+		//   labelDriven = 33 (26 + 5 + 2), result = min(max(33, 73), 73) = 73
 		// Expected MD offset: left(73) + gap(2) + pad(1) + "│"(1) + " "(1) = 78.
 		const donatedLeft = crossTabLeftWidthWithDonation(tabs, itemsByTab, questions, 120);
 		expect(donatedLeft).toBe(73);
 		const expectedIdx = 73 + PREVIEW_COLUMN_GAP + 1 + 2;
-		expect(mdIdx).toBe(expectedIdx);
-		expect(mdIdx).toBeGreaterThan(MIN_LEFT + PREVIEW_COLUMN_GAP + 3); // wider than no-donation
+		expect(mdLine!.indexOf("MD[")).toBe(expectedIdx);
 	});
 
-	it("wide previews suppress donation — MD at MIN_LEFT-based offset", () => {
+	it("long labels + wide previews → donation suppressed, MD at label-driven offset", () => {
 		const wideQ: QuestionData = {
 			question: "pick",
 			header: "pick",
 			options: [
-				{ label: "A", description: "", preview: "x".repeat(500) },
+				{ label: LONG_LABEL, description: "", preview: "x".repeat(500) },
 				{ label: "B", description: "" },
 			],
 		};
 		const { pane, optionListView, items } = makePane(wideQ, () => 120);
-		// Override with donation-aware getter — makePane auto-injects label-driven only.
 		const tabs = [{ multiSelect: false }];
 		const itemsByTab = [items];
 		const questions = [wideQ];
@@ -535,28 +561,26 @@ describe("PreviewPane — slack donation to left column", () => {
 		const lines = pane.render(120);
 		const mdLine = lines.find((l) => /MD\[\d+\]:/.test(l));
 		expect(mdLine).toBeDefined();
-		// Wide preview → donation suppressed → left column = MIN_LEFT(30).
-		// MD starts at: 30 + gap(2) + pad(1) + border(1) + innerPad(1) = 35.
-		expect(mdLine!.indexOf("MD[")).toBe(MIN_LEFT + PREVIEW_COLUMN_GAP + 1 + 2);
+		// Wide preview → donation suppressed → left column = labelDriven (33 for the 26-char label).
+		const labelDriven = adaptiveLeftWidth(items, 3, 120);
+		expect(mdLine!.indexOf("MD[")).toBe(labelDriven + PREVIEW_COLUMN_GAP + 1 + 2);
 	});
 
-	it("right column never below MIN_PREVIEW_WIDTH on narrow panes", () => {
+	it("right column never below MIN_PREVIEW_WIDTH when donation engages", () => {
 		const narrowQ: QuestionData = {
 			question: "pick",
 			header: "pick",
 			options: [
-				{ label: "A", description: "", preview: "tiny" },
+				{ label: LONG_LABEL, description: "", preview: "tiny" },
 				{ label: "B", description: "" },
 			],
 		};
 		const { pane, optionListView, items } = makePane(narrowQ, () => 100);
-		// Override with donation-aware getter — makePane auto-injects label-driven only.
 		const tabs = [{ multiSelect: false }];
 		const itemsByTab = [items];
 		const questions = [narrowQ];
 		pane.setGlobalLeftWidth((w) => crossTabLeftWidthWithDonation(tabs, itemsByTab, questions, w));
 		optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
-		// Direct ceiling invariant: right column >= MIN_PREVIEW_WIDTH.
 		const left = crossTabLeftWidthWithDonation(tabs, itemsByTab, questions, 100);
 		expect(100 - left - PREVIEW_COLUMN_GAP).toBeGreaterThanOrEqual(MIN_PREVIEW_WIDTH);
 		const lines = pane.render(100);
@@ -568,12 +592,11 @@ describe("PreviewPane — slack donation to left column", () => {
 			question: "pick",
 			header: "pick",
 			options: [
-				{ label: "A", description: "", preview: "tiny" },
+				{ label: LONG_LABEL, description: "", preview: "tiny" },
 				{ label: "B", description: "" },
 			],
 		};
 		const { pane, optionListView, items } = makePane(narrowQ, () => 120);
-		// Override with donation-aware getter — makePane auto-injects label-driven only.
 		const tabs = [{ multiSelect: false }];
 		const itemsByTab = [items];
 		const questions = [narrowQ];

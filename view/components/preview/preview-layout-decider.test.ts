@@ -152,11 +152,31 @@ describe("crossTabPreviewBudget", () => {
 });
 
 describe("crossTabLeftWidthWithDonation", () => {
-	it("no previews → donation hits ceiling (MIN_PREVIEW_WIDTH floor binds the budget)", () => {
+	// 26-char label → labelDriven = 26 + 5 (prefix) + 2 (confirmed) = 33 > MIN_LEFT(30).
+	// Required to escape the compact-content guard so the donation path is exercised.
+	const LONG_LABEL = "Verbose Descriptive Option";
+
+	it("short labels (labelDriven ≤ MIN_LEFT) suppress donation — compact-content guard", () => {
+		// npm/yarn-style: short labels signal compact UI. Even with very narrow previews,
+		// donation would inject dead space between options and the box. Skip it.
 		const tabs = [{ multiSelect: false }];
-		const itemsByTab = [[opt("A"), opt("B")]];
-		const qs = [question([{ label: "A" }, { label: "B" }])];
+		const itemsByTab = [[opt("npm"), opt("yarn")]];
+		const qs = [
+			question([
+				{ label: "npm", preview: "npm install" },
+				{ label: "yarn", preview: "yarn install" },
+			]),
+		];
+		const result = crossTabLeftWidthWithDonation(tabs, itemsByTab, qs, 200);
+		expect(result).toBe(MIN_LEFT);
+	});
+
+	it("no previews + long labels → donation hits ceiling (MIN_PREVIEW_WIDTH floor binds the budget)", () => {
+		const tabs = [{ multiSelect: false }];
+		const itemsByTab = [[opt(LONG_LABEL), opt("B")]];
+		const qs = [question([{ label: LONG_LABEL }, { label: "B" }])];
 		const labelDriven = crossTabMaxLeftWidth(tabs, itemsByTab, 120);
+		expect(labelDriven).toBeGreaterThan(MIN_LEFT);
 		const result = crossTabLeftWidthWithDonation(tabs, itemsByTab, qs, 120);
 		// MIN_PREVIEW_WIDTH is the budget floor, so donation still engages —
 		// result is the ceiling (paneWidth − GAP − MIN_PREVIEW_WIDTH).
@@ -165,35 +185,38 @@ describe("crossTabLeftWidthWithDonation", () => {
 		expect(result).toBe(ceiling);
 	});
 
-	it("widens left column when previews are narrow (slack donation engaged)", () => {
+	it("long labels + narrow previews → slack donation engaged", () => {
 		const tabs = [{ multiSelect: false }];
-		const itemsByTab = [[opt("A"), opt("B")]];
-		const qs = [question([{ label: "A", preview: "tiny" }, { label: "B" }])];
+		const itemsByTab = [[opt(LONG_LABEL), opt("B")]];
+		const qs = [question([{ label: LONG_LABEL, preview: "tiny" }, { label: "B" }])];
 		const labelDriven = crossTabMaxLeftWidth(tabs, itemsByTab, 120);
 		const donated = crossTabLeftWidthWithDonation(tabs, itemsByTab, qs, 120);
 		expect(donated).toBeGreaterThan(labelDriven);
 	});
 
-	it("reverts to label-driven when any preview is wide (donation suppressed)", () => {
+	it("long labels + any wide preview → reverts to label-driven (donation suppressed)", () => {
 		const tabs = [{ multiSelect: false }];
-		const itemsByTab = [[opt("A"), opt("B")]];
-		const qs = [question([{ label: "A", preview: "x".repeat(100) }])];
+		const itemsByTab = [[opt(LONG_LABEL), opt("B")]];
+		const qs = [question([{ label: LONG_LABEL, preview: "x".repeat(100) }])];
 		const labelDriven = crossTabMaxLeftWidth(tabs, itemsByTab, 120);
 		expect(crossTabLeftWidthWithDonation(tabs, itemsByTab, qs, 120)).toBe(labelDriven);
 	});
 
 	it("any wide preview anywhere suppresses donation across all tabs", () => {
 		const tabs = [{ multiSelect: false }, { multiSelect: false }];
-		const itemsByTab = [[opt("A")], [opt("B")]];
-		const qs = [question([{ label: "A", preview: "tiny" }]), question([{ label: "B", preview: "x".repeat(100) }])];
+		const itemsByTab = [[opt(LONG_LABEL)], [opt("B")]];
+		const qs = [
+			question([{ label: LONG_LABEL, preview: "tiny" }]),
+			question([{ label: "B", preview: "x".repeat(100) }]),
+		];
 		const labelDriven = crossTabMaxLeftWidth(tabs, itemsByTab, 120);
 		expect(crossTabLeftWidthWithDonation(tabs, itemsByTab, qs, 120)).toBe(labelDriven);
 	});
 
-	it("respects MIN_PREVIEW_WIDTH ceiling — right column never below MIN_PREVIEW_WIDTH", () => {
+	it("respects MIN_PREVIEW_WIDTH ceiling — right column never below MIN_PREVIEW_WIDTH when donating", () => {
 		const tabs = [{ multiSelect: false }];
-		const itemsByTab = [[opt("A"), opt("B")]];
-		const qs = [question([{ label: "A", preview: "tiny" }])];
+		const itemsByTab = [[opt(LONG_LABEL), opt("B")]];
+		const qs = [question([{ label: LONG_LABEL, preview: "tiny" }])];
 		const result = crossTabLeftWidthWithDonation(tabs, itemsByTab, qs, 120);
 		const rightWidth = 120 - result - PREVIEW_COLUMN_GAP;
 		expect(rightWidth).toBeGreaterThanOrEqual(MIN_PREVIEW_WIDTH);
@@ -201,9 +224,12 @@ describe("crossTabLeftWidthWithDonation", () => {
 
 	it("is permutation-invariant across tab order", () => {
 		const tabs = [{ multiSelect: false }, { multiSelect: false }];
-		const a = [opt("short")];
-		const b = [opt("a longer label here")];
-		const qs = [question([{ label: "A", preview: "tiny" }]), question([{ label: "B", preview: "x".repeat(60) }])];
+		const a = [opt(LONG_LABEL)];
+		const b = [opt("B")];
+		const qs = [
+			question([{ label: LONG_LABEL, preview: "tiny" }]),
+			question([{ label: "B", preview: "x".repeat(60) }]),
+		];
 		expect(crossTabLeftWidthWithDonation(tabs, [a, b], qs, 120)).toBe(
 			crossTabLeftWidthWithDonation(tabs, [b, a], qs, 120),
 		);
@@ -211,8 +237,8 @@ describe("crossTabLeftWidthWithDonation", () => {
 
 	it("floors at MIN_LEFT even with donation", () => {
 		const tabs = [{ multiSelect: false }];
-		const itemsByTab = [[opt("A")]];
-		const qs = [question([{ label: "A", preview: "tiny" }])];
+		const itemsByTab = [[opt(LONG_LABEL)]];
+		const qs = [question([{ label: LONG_LABEL, preview: "tiny" }])];
 		expect(crossTabLeftWidthWithDonation(tabs, itemsByTab, qs, 200)).toBeGreaterThanOrEqual(MIN_LEFT);
 	});
 

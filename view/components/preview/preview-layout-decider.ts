@@ -157,6 +157,10 @@ export function crossTabLeftWidthWithDonation(
 	paneWidth: number,
 ): number {
 	const labelDriven = crossTabMaxLeftWidth(tabs, itemsByTab, paneWidth);
+	// Compact-content guard: labels at MIN_LEFT fit below the floor, so widening
+	// the column would only inject dead space between the option list and the
+	// preview box. Skip donation and preserve the compact intent.
+	if (labelDriven <= MIN_LEFT) return labelDriven;
 	const previewBudget = crossTabPreviewBudget(questions, paneWidth);
 	const slackDonation = paneWidth - PREVIEW_COLUMN_GAP - previewBudget;
 	const ceiling = paneWidth - PREVIEW_COLUMN_GAP - MIN_PREVIEW_WIDTH;
