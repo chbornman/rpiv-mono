@@ -30,7 +30,6 @@ export {
 } from "./preview-box-renderer.js";
 export {
 	PREVIEW_COLUMN_GAP,
-	PREVIEW_LEFT_COLUMN_MAX_WIDTH,
 	PREVIEW_MIN_WIDTH,
 	PREVIEW_PADDING_LEFT,
 	STACKED_GAP_ROWS,
@@ -76,6 +75,14 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 	private readonly optionListView: OptionListView;
 	private readonly previewBlock: PreviewBlockRenderer;
 	private props: PreviewPaneProps;
+	/**
+	 * Cross-tab max left-width getter. Set exactly once by `buildQuestionnaire.injectGlobalLeftWidth`
+	 * before any render. Initialized to a throwing sentinel so missing injection is a hard fail
+	 * rather than a silent fallback to a magic constant — render is illegal until injected.
+	 */
+	private globalLeftWidth: (paneWidth: number) => number = () => {
+		throw new Error("PreviewPane.setGlobalLeftWidth must be called before render()");
+	};
 
 	constructor(config: PreviewPaneConfig) {
 		this.question = config.question;
@@ -83,6 +90,14 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 		this.optionListView = config.optionListView;
 		this.previewBlock = config.previewBlock;
 		this.props = { notesVisible: false, selectedIndex: 0, focused: false };
+	}
+
+	setGlobalLeftWidth(getter: (paneWidth: number) => number): void {
+		this.globalLeftWidth = getter;
+	}
+
+	private getAdaptiveLeft(paneWidth: number): number {
+		return this.globalLeftWidth(paneWidth);
 	}
 
 	setProps(props: PreviewPaneProps): void {
@@ -122,7 +137,8 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 		if (this.question.multiSelect === true) return this.optionListView.render(width).length;
 		if (!this.previewBlock.hasAnyPreview()) return this.optionListView.render(width).length;
 		const mode = decideLayout(this.getTerminalWidth(), width);
-		const { optionsWidth, previewWidth } = bodyWidths(width, mode);
+		const adaptiveLeft = this.getAdaptiveLeft(width);
+		const { optionsWidth, previewWidth } = bodyWidths(width, mode, adaptiveLeft);
 		const optionsHeight = this.optionListView.render(optionsWidth).length;
 		const previewBlockHeight = this.previewBlock.blockHeight(previewWidth, this.props.selectedIndex, mode);
 		if (mode === "side-by-side") return Math.max(optionsHeight, previewBlockHeight);
@@ -133,7 +149,8 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 		if (this.question.multiSelect === true) return this.optionListView.render(width).length;
 		if (!this.previewBlock.hasAnyPreview()) return this.optionListView.render(width).length;
 		const mode = decideLayout(this.getTerminalWidth(), width);
-		const { optionsWidth, previewWidth } = bodyWidths(width, mode);
+		const adaptiveLeft = this.getAdaptiveLeft(width);
+		const { optionsWidth, previewWidth } = bodyWidths(width, mode, adaptiveLeft);
 		const optionsHeight = this.optionListView.render(optionsWidth).length;
 		let maxPreviewBlock = 0;
 		for (let i = 0; i < this.question.options.length; i++) {
@@ -145,7 +162,8 @@ export class PreviewPane implements StatefulView<PreviewPaneProps>, Component {
 	}
 
 	private renderSideBySide(width: number, mode: PreviewLayoutMode): string[] {
-		const { leftWidth, rightWidth, gap } = columnWidths(width);
+		const adaptiveLeft = this.getAdaptiveLeft(width);
+		const { leftWidth, rightWidth, gap } = columnWidths(width, adaptiveLeft);
 		const leftLines = this.optionListView.render(leftWidth);
 		const rightLines = this.renderPaddedPreviewLines(rightWidth, mode);
 		const rows = Math.max(leftLines.length, rightLines.length);

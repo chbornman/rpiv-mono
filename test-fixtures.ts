@@ -3,6 +3,7 @@ import type { QuestionnaireState } from "./state/state.js";
 import type { ApplyContext } from "./state/state-reducer.js";
 import type { QuestionData } from "./tool/types.js";
 import type { MultiSelectViewProps } from "./view/components/multi-select-view.js";
+import type { PreviewPane, PreviewPaneProps } from "./view/components/preview/preview-pane.js";
 import type { SubmitPickerProps } from "./view/components/submit-picker.js";
 import type { WrappingSelectItem } from "./view/components/wrapping-select.js";
 import type { StatefulView } from "./view/stateful-view.js";
@@ -64,10 +65,23 @@ export function makeStatefulView<P>(): StatefulView<P> {
 	};
 }
 
+/**
+ * Mock PreviewPane for test fixtures. `TabComponents.preview` is statically typed
+ * `PreviewPane`, but tests bypass `buildQuestionnaire` and only need a `StatefulView`
+ * shape — this cast preserves that ergonomics without forcing tests to construct
+ * a real PreviewPane (which would require a real OptionListView + PreviewBlockRenderer).
+ */
+export function makeFakePreviewPane(): PreviewPane {
+	return {
+		...makeStatefulView<PreviewPaneProps>(),
+		setGlobalLeftWidth: vi.fn(),
+	} as unknown as PreviewPane;
+}
+
 export function makeTabComponents(over: Partial<TabComponents> = {}): TabComponents {
 	return {
 		optionList: over.optionList ?? makeStatefulView(),
-		preview: over.preview ?? makeStatefulView(),
+		preview: over.preview ?? makeFakePreviewPane(),
 		multiSelect: over.multiSelect,
 		bodyHeights: over.bodyHeights ?? (() => ({ current: 0, max: 0 })),
 	};

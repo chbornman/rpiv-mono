@@ -27,6 +27,13 @@ import type { QuestionData } from "../../../tool/types.js";
 import { OptionListView } from "../option-list-view.js";
 import type { WrappingSelectItem } from "../wrapping-select.js";
 import {
+	adaptiveLeftWidth,
+	MAX_LEFT_RATIO,
+	MIN_LEFT,
+	MIN_PREVIEW_WIDTH,
+	PREVIEW_COLUMN_GAP,
+} from "./preview-layout-decider.js";
+import {
 	MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE,
 	MAX_PREVIEW_HEIGHT_STACKED,
 	NO_PREVIEW_TEXT,
@@ -74,7 +81,12 @@ function makePane(question: QuestionData, getWidth: () => number = () => 120) {
 		optionListView,
 		previewBlock,
 	});
-	return { pane, optionListView, previewBlock };
+	// Auto-inject adaptive left width — mirrors buildQuestionnaire.injectGlobalLeftWidth so
+	// test panes that bypass the builder still pass the throwing-sentinel guard. The throw-test
+	// constructs PreviewPane inline to opt out of this injection.
+	const totalForNumbering = question.multiSelect === true ? items.length : items.length + 1;
+	pane.setGlobalLeftWidth((paneWidth) => adaptiveLeftWidth(items, totalForNumbering, paneWidth));
+	return { pane, optionListView, previewBlock, items };
 }
 
 beforeEach(() => {
@@ -401,7 +413,7 @@ describe("PreviewPane — left-aligned preview with top/left padding (side-by-si
 		expect(shortMD).toBe(longMD);
 	});
 
-	it("side-by-side: options column is capped at PREVIEW_LEFT_COLUMN_MAX_WIDTH (40) regardless of total width", () => {
+	it("side-by-side: adaptive left width adjusts options column based on label content", () => {
 		const longQ: QuestionData = {
 			question: "pick",
 			header: "pick",
@@ -410,14 +422,21 @@ describe("PreviewPane — left-aligned preview with top/left padding (side-by-si
 				{ label: "B", description: "" },
 			],
 		};
+		const items: WrappingSelectItem[] = [
+			{ kind: "option", label: "A" },
+			{ kind: "option", label: "B" },
+		];
 		const { pane, optionListView } = makePane(longQ, () => 200);
 		optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
 		const lines = pane.render(200);
 		const preview = extractPreviewColumnLines(lines);
 		expect(preview.length).toBeGreaterThan(0);
-		// MD column starts at leftWidth(40) + gap(2) + leftPad(1) + leftBorderBar(1) + innerLeftPad(1) = 45.
+		// Short labels → leftWidth = MIN_LEFT (30). MD column starts at
+		// leftWidth + gap(2) + leftPad(1) + leftBorderBar(1) + innerLeftPad(1).
+		const expectedLeft = adaptiveLeftWidth(items, 3, 200);
+		const expectedMdIdx = expectedLeft + PREVIEW_COLUMN_GAP + 1 + 2;
 		const mdIdx = preview[0].indexOf("MD[");
-		expect(mdIdx).toBe(45);
+		expect(mdIdx).toBe(expectedMdIdx);
 	});
 
 	it("side-by-side: first MD row is preceded by the top border row (no top padding)", () => {
@@ -605,10 +624,106 @@ describe("PreviewPane composes OptionListView state into render output", () => {
 			optionListView,
 			previewBlock,
 		});
+		pane.setGlobalLeftWidth((w) => adaptiveLeftWidth(items, items.length, w));
 		pane.setProps({ notesVisible: false, selectedIndex: 2, focused: true });
 		optionListView.setProps({ selectedIndex: 2, focused: true, inputBuffer: "Hello" });
 		const lines = pane.render(120);
 		expect(lines.some((l) => l.includes("Hello"))).toBe(true);
 		expect(lines.some((l) => l.includes("▌"))).toBe(true);
+	});
+});
+
+describe("PreviewPane — adaptive left column width", () => {
+	const question: QuestionData = {
+		question: "pick",
+		header: "pick",
+		options: [
+			{ label: "Short", description: "", preview: "body" },
+			{ label: "Another", description: "" },
+		],
+	};
+
+	it("short labels floor at MIN_LEFT (30)", () => {
+		const { pane, optionListView, items } = makePane(question, () => 120);
+		optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
+		const leftW = adaptiveLeftWidth(items, 3, 120);
+		expect(leftW).toBe(MIN_LEFT);
+		const lines = pane.render(120);
+		for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(120);
+	});
+
+	it("long labels produce wider left column up to MAX_LEFT_RATIO", () => {
+		const longLabelQ: QuestionData = {
+			question: "pick",
+			header: "pick",
+			options: [
+				{
+					label: "A very long option label that tests the ratio cap",
+					description: "",
+					preview: "body",
+				},
+				{ label: "B", description: "" },
+			],
+		};
+		const { pane, optionListView, items } = makePane(longLabelQ, () => 120);
+		optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
+		const leftW = adaptiveLeftWidth(items, 3, 120);
+		expect(leftW).toBeGreaterThan(MIN_LEFT);
+		expect(leftW).toBeLessThanOrEqual(Math.floor(120 * MAX_LEFT_RATIO));
+		const lines = pane.render(120);
+		for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(120);
+	});
+
+	it("MIN_PREVIEW_WIDTH safety net prevents right-side collapse", () => {
+		// At width 100: ratio cap = 50, available = 100 - 2 - 40 = 58.
+		// With long labels (60-char label), desired exceeds both — cap is min(50, 58) = 50.
+		// At width 82: ratio cap = 41, available = 40 — leftWidth <= 40.
+		const items: WrappingSelectItem[] = [
+			{ kind: "option", label: "x".repeat(60) },
+			{ kind: "option", label: "y" },
+		];
+		const leftW = adaptiveLeftWidth(items, 3, 82);
+		expect(leftW).toBeLessThanOrEqual(82 - PREVIEW_COLUMN_GAP - MIN_PREVIEW_WIDTH);
+	});
+
+	it("render() throws if setGlobalLeftWidth was not injected — render is illegal pre-injection", () => {
+		// Construct PreviewPane inline to opt out of makePane's auto-injection.
+		// buildQuestionnaire.injectGlobalLeftWidth always injects in production; tests that
+		// bypass the builder MUST inject explicitly. Missing injection is a hard fail rather
+		// than a silent fallback to a magic constant.
+		const items: WrappingSelectItem[] = question.options.map((o) => ({
+			kind: "option" as const,
+			label: o.label,
+			description: o.description,
+		}));
+		const optionListView = new OptionListView({ items, theme: selectTheme });
+		const previewBlock = new PreviewBlockRenderer({ question, theme, markdownTheme });
+		const pane = new PreviewPane({
+			question,
+			getTerminalWidth: () => 120,
+			optionListView,
+			previewBlock,
+		});
+		optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
+		expect(() => pane.render(120)).toThrow(/setGlobalLeftWidth/);
+	});
+
+	it("cross-tab max keeps width stable — same getter produces same leftWidth for different items", () => {
+		const shortItems: WrappingSelectItem[] = [{ kind: "option", label: "A" }];
+		const longItems: WrappingSelectItem[] = [{ kind: "option", label: "A very long label indeed" }];
+		const shortW = adaptiveLeftWidth(shortItems, 2, 120);
+		const longW = adaptiveLeftWidth(longItems, 2, 120);
+		const globalMax = Math.max(shortW, longW);
+		expect(globalMax).toBe(longW);
+		const getter = (w: number) => Math.max(adaptiveLeftWidth(shortItems, 2, w), adaptiveLeftWidth(longItems, 2, w));
+		expect(getter(120)).toBe(globalMax);
+	});
+
+	it("naturalHeight(w) === render(w).length still holds with adaptive width", () => {
+		const { pane, optionListView } = makePane(question, () => 120);
+		for (const w of [100, 120, 160]) {
+			optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
+			expect(pane.naturalHeight(w)).toBe(pane.render(w).length);
+		}
 	});
 });

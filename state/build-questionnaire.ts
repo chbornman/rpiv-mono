@@ -11,6 +11,7 @@ import { ChatRowView } from "../view/components/chat-row-view.js";
 import { MultiSelectView } from "../view/components/multi-select-view.js";
 import { OptionListView } from "../view/components/option-list-view.js";
 import { PreviewBlockRenderer } from "../view/components/preview/preview-block-renderer.js";
+import { crossTabMaxLeftWidth } from "../view/components/preview/preview-layout-decider.js";
 import type { PreviewPaneProps } from "../view/components/preview/preview-pane.js";
 import { PreviewPane } from "../view/components/preview/preview-pane.js";
 import { SubmitPicker } from "../view/components/submit-picker.js";
@@ -124,6 +125,7 @@ class QuestionnaireBuilder {
 
 	build(): QuestionnaireBuilt {
 		const tabs = this.buildTabComponents();
+		this.injectGlobalLeftWidth(tabs);
 		const submitPicker = this.buildSubmitPicker();
 		const tabBar = this.buildTabBar();
 		const heights = this.buildHeightComputers(tabs);
@@ -174,6 +176,21 @@ class QuestionnaireBuilder {
 		multiSelect: MultiSelectView | undefined,
 	): (width: number) => TabBodyHeights {
 		return question.multiSelect ? multiSelectBodyHeights(multiSelect!) : previewBodyHeights(preview);
+	}
+
+	/**
+	 * Compute cross-tab max adaptive left width and inject into each PreviewPane.
+	 * Mirrors buildHeightComputers pattern — iterates all tabs, takes max.
+	 * Called after buildTabComponents, before buildDialog (so setGlobalLeftWidth
+	 * is set before any rendering occurs).
+	 */
+	private injectGlobalLeftWidth(tabs: ReadonlyArray<TabComponents>): void {
+		const questions = this.questions;
+		const itemsByTab = this.itemsByTab;
+		const globalLeftWidth = (paneWidth: number): number => crossTabMaxLeftWidth(questions, itemsByTab, paneWidth);
+		for (const tab of tabs) {
+			tab.preview.setGlobalLeftWidth(globalLeftWidth);
+		}
 	}
 
 	private buildSubmitPicker(): SubmitPicker | undefined {

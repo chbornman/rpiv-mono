@@ -11,6 +11,7 @@ import {
 	selectTabBarProps,
 } from "../state/selectors/projections.js";
 import {
+	makeFakePreviewPane,
 	makeQuestion,
 	makeQuestionnaireState as makeState,
 	makeStatefulView,
@@ -21,7 +22,6 @@ import { type BoundGlobalBinding, type BoundPerTabBinding, globalBinding, perTab
 import type { ChatRowViewProps } from "./components/chat-row-view.js";
 import type { MultiSelectViewProps } from "./components/multi-select-view.js";
 import type { OptionListViewProps } from "./components/option-list-view.js";
-import type { PreviewPaneProps } from "./components/preview/preview-pane.js";
 import type { SubmitPickerProps } from "./components/submit-picker.js";
 import type { TabBarProps } from "./components/tab-bar.js";
 import type { WrappingSelectItem } from "./components/wrapping-select.js";
@@ -39,7 +39,7 @@ function makeFixture(overQuestions?: QuestionData[]) {
 	const tabsByIndex: TabComponents[] = questions.map((q) =>
 		makeTabComponents({
 			optionList: makeStatefulView<OptionListViewProps>(),
-			preview: makeStatefulView<PreviewPaneProps>(),
+			preview: makeFakePreviewPane(),
 			multiSelect: q.multiSelect ? makeStatefulView<MultiSelectViewProps>() : undefined,
 		}),
 	);
