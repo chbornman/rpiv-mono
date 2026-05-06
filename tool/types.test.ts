@@ -120,8 +120,9 @@ describe("QuestionSchema — option/preview/multiSelect/header shape", () => {
 		expect(Value.Check(QuestionsSchema, [noHeader])).toBe(false);
 	});
 
-	it("rejects a header longer than MAX_HEADER_LENGTH (12) chars", () => {
-		expect(Value.Check(QuestionsSchema, [makeQuestion({ header: "ThisIsTooLong13" })])).toBe(false);
+	it("rejects a header longer than MAX_HEADER_LENGTH chars", () => {
+		const tooLong = "x".repeat(MAX_HEADER_LENGTH + 1);
+		expect(Value.Check(QuestionsSchema, [makeQuestion({ header: tooLong })])).toBe(false);
 	});
 
 	it("rejects a label longer than MAX_LABEL_LENGTH (60) chars", () => {
@@ -284,7 +285,7 @@ describe("schema constants + RESERVED_LABELS", () => {
 	it("exports the new schema constants with expected values", () => {
 		expect(MIN_OPTIONS).toBe(2);
 		expect(MAX_OPTIONS).toBe(4);
-		expect(MAX_HEADER_LENGTH).toBe(12);
+		expect(MAX_HEADER_LENGTH).toBe(16);
 		expect(MAX_LABEL_LENGTH).toBe(60);
 	});
 

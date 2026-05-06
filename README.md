@@ -63,7 +63,7 @@ ask_user_question({
   questions: [
     {
       question: string,            // full question text, ends with "?"
-      header: string,              // chip label, max 12 chars
+      header: string,              // chip label, max 16 chars
       options: [
         {
           label: string,           // 1-5 words, max 60 chars

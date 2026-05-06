@@ -4,7 +4,7 @@ import { LABELS_BY_KIND, ROW_INTENT_META } from "../state/row-intent.js";
 export const MAX_QUESTIONS = 4;
 export const MIN_OPTIONS = 2;
 export const MAX_OPTIONS = 4;
-export const MAX_HEADER_LENGTH = 12;
+export const MAX_HEADER_LENGTH = 16;
 export const MAX_LABEL_LENGTH = 60;
 
 /**
