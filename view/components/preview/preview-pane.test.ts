@@ -28,6 +28,7 @@ import { OptionListView } from "../option-list-view.js";
 import type { WrappingSelectItem } from "../wrapping-select.js";
 import {
 	adaptiveLeftWidth,
+	crossTabLeftWidthWithDonation,
 	MAX_LEFT_RATIO,
 	MIN_LEFT,
 	MIN_PREVIEW_WIDTH,
@@ -477,6 +478,113 @@ describe("PreviewPane — left-aligned preview with top/left padding (side-by-si
 	});
 });
 
+describe("PreviewPane — slack donation to left column", () => {
+	it("narrow previews engage donation — left column > MIN_LEFT, MD at wider offset", () => {
+		const narrowQ: QuestionData = {
+			question: "pick",
+			header: "pick",
+			options: [
+				{ label: "A", description: "", preview: "tiny" },
+				{ label: "B", description: "" },
+			],
+		};
+		const { pane, optionListView, items } = makePane(narrowQ, () => 120);
+		// Override with donation-aware getter — makePane auto-injects label-driven only.
+		const tabs = [{ multiSelect: false }];
+		const itemsByTab = [items];
+		const questions = [narrowQ];
+		pane.setGlobalLeftWidth((w) => crossTabLeftWidthWithDonation(tabs, itemsByTab, questions, w));
+		optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
+
+		const labelDriven = adaptiveLeftWidth(items, 3, 120);
+		expect(labelDriven).toBe(MIN_LEFT); // 30
+
+		const lines = pane.render(120);
+		const mdLine = lines.find((l) => /MD\[\d+\]:/.test(l));
+		expect(mdLine).toBeDefined();
+
+		const mdIdx = mdLine!.indexOf("MD[");
+		// Donation widens left column. At width 120, crossTabLeftWidthWithDonation returns 73:
+		//   previewSourceWidth = 4 ("tiny"), per-question budget = 4+5 = 9 → floored at MIN_PREVIEW_WIDTH(45)
+		//   previewBudget = 45, slackDonation = 120 − 2 − 45 = 73, ceiling = 120 − 2 − 45 = 73
+		//   result = min(max(30, 73), 73) = 73
+		// Expected MD offset: left(73) + gap(2) + pad(1) + "│"(1) + " "(1) = 78.
+		const donatedLeft = crossTabLeftWidthWithDonation(tabs, itemsByTab, questions, 120);
+		expect(donatedLeft).toBe(73);
+		const expectedIdx = 73 + PREVIEW_COLUMN_GAP + 1 + 2;
+		expect(mdIdx).toBe(expectedIdx);
+		expect(mdIdx).toBeGreaterThan(MIN_LEFT + PREVIEW_COLUMN_GAP + 3); // wider than no-donation
+	});
+
+	it("wide previews suppress donation — MD at MIN_LEFT-based offset", () => {
+		const wideQ: QuestionData = {
+			question: "pick",
+			header: "pick",
+			options: [
+				{ label: "A", description: "", preview: "x".repeat(500) },
+				{ label: "B", description: "" },
+			],
+		};
+		const { pane, optionListView, items } = makePane(wideQ, () => 120);
+		// Override with donation-aware getter — makePane auto-injects label-driven only.
+		const tabs = [{ multiSelect: false }];
+		const itemsByTab = [items];
+		const questions = [wideQ];
+		pane.setGlobalLeftWidth((w) => crossTabLeftWidthWithDonation(tabs, itemsByTab, questions, w));
+		optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
+		const lines = pane.render(120);
+		const mdLine = lines.find((l) => /MD\[\d+\]:/.test(l));
+		expect(mdLine).toBeDefined();
+		// Wide preview → donation suppressed → left column = MIN_LEFT(30).
+		// MD starts at: 30 + gap(2) + pad(1) + border(1) + innerPad(1) = 35.
+		expect(mdLine!.indexOf("MD[")).toBe(MIN_LEFT + PREVIEW_COLUMN_GAP + 1 + 2);
+	});
+
+	it("right column never below MIN_PREVIEW_WIDTH on narrow panes", () => {
+		const narrowQ: QuestionData = {
+			question: "pick",
+			header: "pick",
+			options: [
+				{ label: "A", description: "", preview: "tiny" },
+				{ label: "B", description: "" },
+			],
+		};
+		const { pane, optionListView, items } = makePane(narrowQ, () => 100);
+		// Override with donation-aware getter — makePane auto-injects label-driven only.
+		const tabs = [{ multiSelect: false }];
+		const itemsByTab = [items];
+		const questions = [narrowQ];
+		pane.setGlobalLeftWidth((w) => crossTabLeftWidthWithDonation(tabs, itemsByTab, questions, w));
+		optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
+		// Direct ceiling invariant: right column >= MIN_PREVIEW_WIDTH.
+		const left = crossTabLeftWidthWithDonation(tabs, itemsByTab, questions, 100);
+		expect(100 - left - PREVIEW_COLUMN_GAP).toBeGreaterThanOrEqual(MIN_PREVIEW_WIDTH);
+		const lines = pane.render(100);
+		for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(100);
+	});
+
+	it("naturalHeight(w) === render(w).length holds with donation active", () => {
+		const narrowQ: QuestionData = {
+			question: "pick",
+			header: "pick",
+			options: [
+				{ label: "A", description: "", preview: "tiny" },
+				{ label: "B", description: "" },
+			],
+		};
+		const { pane, optionListView, items } = makePane(narrowQ, () => 120);
+		// Override with donation-aware getter — makePane auto-injects label-driven only.
+		const tabs = [{ multiSelect: false }];
+		const itemsByTab = [items];
+		const questions = [narrowQ];
+		pane.setGlobalLeftWidth((w) => crossTabLeftWidthWithDonation(tabs, itemsByTab, questions, w));
+		for (const w of [100, 120, 160]) {
+			optionListView.setProps({ selectedIndex: 0, focused: true, inputBuffer: "" });
+			expect(pane.naturalHeight(w)).toBe(pane.render(w).length);
+		}
+	});
+});
+
 describe("renderBorderedBox helper", () => {
 	it("wraps lines in 4-sided border with `┌─┐│└┘` corners", () => {
 		const out = renderBorderedBox(["hello"], 20, (s) => s);
@@ -675,9 +783,9 @@ describe("PreviewPane — adaptive left column width", () => {
 	});
 
 	it("MIN_PREVIEW_WIDTH safety net prevents right-side collapse", () => {
-		// At width 100: ratio cap = 50, available = 100 - 2 - 40 = 58.
-		// With long labels (60-char label), desired exceeds both — cap is min(50, 58) = 50.
-		// At width 82: ratio cap = 41, available = 40 — leftWidth <= 40.
+		// At width 100: ratio cap = 50, available = 100 - 2 - 45 = 53.
+		// With long labels (60-char label), desired exceeds both — cap is min(50, 53) = 50.
+		// At width 82: ratio cap = 41, available = 35 — leftWidth <= 35.
 		const items: WrappingSelectItem[] = [
 			{ kind: "option", label: "x".repeat(60) },
 			{ kind: "option", label: "y" },

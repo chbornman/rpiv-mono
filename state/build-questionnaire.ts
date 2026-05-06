@@ -11,7 +11,7 @@ import { ChatRowView } from "../view/components/chat-row-view.js";
 import { MultiSelectView } from "../view/components/multi-select-view.js";
 import { OptionListView } from "../view/components/option-list-view.js";
 import { PreviewBlockRenderer } from "../view/components/preview/preview-block-renderer.js";
-import { crossTabMaxLeftWidth } from "../view/components/preview/preview-layout-decider.js";
+import { crossTabLeftWidthWithDonation } from "../view/components/preview/preview-layout-decider.js";
 import type { PreviewPaneProps } from "../view/components/preview/preview-pane.js";
 import { PreviewPane } from "../view/components/preview/preview-pane.js";
 import { SubmitPicker } from "../view/components/submit-picker.js";
@@ -187,7 +187,9 @@ class QuestionnaireBuilder {
 	private injectGlobalLeftWidth(tabs: ReadonlyArray<TabComponents>): void {
 		const questions = this.questions;
 		const itemsByTab = this.itemsByTab;
-		const globalLeftWidth = (paneWidth: number): number => crossTabMaxLeftWidth(questions, itemsByTab, paneWidth);
+		const tabsDescriptor = questions.map((q) => ({ multiSelect: q.multiSelect }));
+		const globalLeftWidth = (paneWidth: number): number =>
+			crossTabLeftWidthWithDonation(tabsDescriptor, itemsByTab, questions, paneWidth);
 		for (const tab of tabs) {
 			tab.preview.setGlobalLeftWidth(globalLeftWidth);
 		}
