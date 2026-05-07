@@ -7,6 +7,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Header chip limit raised from 12 to 16 characters.
+- Left column in side-by-side preview adapts its width to the longest option label, clamped between 30 and half the terminal width, instead of using a fixed 40-character cap.
+- Preview slack donated back to the option list when previews are narrower than the right column's allocation, giving descriptions more horizontal room.
+
+### Changed
+- Short option labels (1–4 characters, e.g. npm/pnpm/yarn-style) no longer trigger the preview-donation algorithm, keeping the layout compact for dense choice sets.
+
 ## [1.1.5] - 2026-05-05
 
 ### Fixed
