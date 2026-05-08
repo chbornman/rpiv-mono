@@ -1,4 +1,4 @@
-import { Input } from "@mariozechner/pi-tui";
+import { Input } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import type { PerTabSelector } from "../state/selectors/contract.js";
 import {

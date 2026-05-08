@@ -1,11 +1,11 @@
+import type { Theme } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { makeTheme } from "@juicesharp/rpiv-test-utils";
-import type { Theme } from "@mariozechner/pi-coding-agent";
-import { visibleWidth } from "@mariozechner/pi-tui";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let markdownConstructed = 0;
 let lastMarkdownText = "";
-vi.mock("@mariozechner/pi-tui", async (orig) => {
+vi.mock("@earendil-works/pi-tui", async (orig) => {
 	const actual = (await orig()) as Record<string, unknown>;
 	class FakeMarkdown {
 		constructor(public text: string) {

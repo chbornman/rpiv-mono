@@ -1,4 +1,4 @@
-import { type Component, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
+import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { QuestionData } from "../../../tool/types.js";
 import type { StatefulView } from "../../stateful-view.js";
 import type { OptionListView } from "../option-list-view.js";

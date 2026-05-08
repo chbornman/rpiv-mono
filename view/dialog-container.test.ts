@@ -1,7 +1,7 @@
+import type { Theme } from "@earendil-works/pi-coding-agent";
+import type { Component, Input } from "@earendil-works/pi-tui";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { makeTheme } from "@juicesharp/rpiv-test-utils";
-import type { Theme } from "@mariozechner/pi-coding-agent";
-import type { Component, Input } from "@mariozechner/pi-tui";
-import { visibleWidth } from "@mariozechner/pi-tui";
 import { describe, expect, it } from "vitest";
 import {
 	makeMultiSelectPropsFromState as msoPropsFromState,

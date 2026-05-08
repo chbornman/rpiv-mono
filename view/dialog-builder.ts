@@ -1,5 +1,5 @@
-import { DynamicBorder, type Theme } from "@mariozechner/pi-coding-agent";
-import { type Component, Container, type Input, Spacer } from "@mariozechner/pi-tui";
+import { DynamicBorder, type Theme } from "@earendil-works/pi-coding-agent";
+import { type Component, Container, type Input, Spacer } from "@earendil-works/pi-tui";
 import type { QuestionnaireState } from "../state/state.js";
 import type { QuestionData } from "../tool/types.js";
 import { BodyResidualSpacer } from "./body-residual-spacer.js";
