@@ -7,6 +7,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Inline "Other" input row now wraps long custom answers across multiple lines instead of clipping them off the right edge.
+
 ## [1.2.1] - 2026-05-07
 
 ## [1.2.0] - 2026-05-07
