@@ -7,6 +7,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Tool description now advertises the 60-character label limit in prose, reducing rejected responses from models that overlook schema-level constraints.
+
 ## [1.4.0] - 2026-05-10
 
 ## [1.3.1] - 2026-05-10
