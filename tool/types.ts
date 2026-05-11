@@ -45,8 +45,7 @@ export type ReservedLabel = (typeof RESERVED_LABELS)[number];
 export const OptionSchema = Type.Object({
 	label: Type.String({
 		maxLength: MAX_LABEL_LENGTH,
-		description:
-			"The display text for this option that the user will see and select. Should be concise (1-5 words) and clearly describe the choice.",
+		description: `MAX ${MAX_LABEL_LENGTH} CHARACTERS — hard limit, requests over the limit are rejected. The display text for this option that the user will see and select. Should be concise (1-5 words) and clearly describe the choice.`,
 	}),
 	description: Type.String({
 		description:
