@@ -745,7 +745,7 @@ describe("ask_user_question — MAX_QUESTIONS (4 questions) complete flow", () =
 		expect(r?.details.answers).toHaveLength(4);
 		const labels = r?.details.answers.map((a: QuestionAnswer) => a.answer);
 		expect(labels).toEqual(["A", "B", "C", "D"]);
-		// Phase 3 envelope: single CC-style sentence chain.
+		// Envelope: single CC-style sentence chain.
 		expect(r?.content[0].text).toContain('"Q1?"="A".');
 		expect(r?.content[0].text).toContain('"Q4?"="D".');
 		expect(r?.content[0].text).toMatch(/^User has answered your questions:/);
