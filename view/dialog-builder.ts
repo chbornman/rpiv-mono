@@ -94,18 +94,31 @@ function computeScrollStart(
 	return Math.max(0, Math.min(idealStart, middleRows - availableMiddle));
 }
 
-/** Mark the scroll window edges with overflow arrows; combined ↕ on a single-row middle. */
-function decorateOverflow(scrollableMiddle: string[], hasUp: boolean, hasDown: boolean, theme: Theme): void {
+/**
+ * Mark the scroll window edges with overflow arrows; combined ↕ on a single-row middle.
+ * An arrow replaces the row it lands on, so rows inside `protectedRows` (the focused item,
+ * in window coordinates, end-exclusive) are never drawn over — losing the affordance beats
+ * losing the row the user is on (#261).
+ */
+function decorateOverflow(
+	scrollableMiddle: string[],
+	hasUp: boolean,
+	hasDown: boolean,
+	theme: Theme,
+	protectedRows: readonly [number, number] | undefined,
+): void {
+	const drawable = (row: number) => !protectedRows || row < protectedRows[0] || row >= protectedRows[1];
 	if (hasUp && hasDown && scrollableMiddle.length === 1) {
 		// Single-row middle: combined ↕ avoids the prior collision where ↓ overwrote ↑.
-		scrollableMiddle[0] = theme.fg("dim", OVERFLOW_BOTH);
+		if (drawable(0)) scrollableMiddle[0] = theme.fg("dim", OVERFLOW_BOTH);
 		return;
 	}
-	if (hasUp && scrollableMiddle.length > 0) {
+	if (hasUp && scrollableMiddle.length > 0 && drawable(0)) {
 		scrollableMiddle[0] = theme.fg("dim", OVERFLOW_UP);
 	}
-	if (hasDown && scrollableMiddle.length > 0) {
-		scrollableMiddle[scrollableMiddle.length - 1] = theme.fg("dim", OVERFLOW_DOWN);
+	const last = scrollableMiddle.length - 1;
+	if (hasDown && last > 0 && drawable(last)) {
+		scrollableMiddle[last] = theme.fg("dim", OVERFLOW_DOWN);
 	}
 }
 
@@ -222,8 +235,11 @@ export class DialogView implements StatefulView<DialogProps> {
 
 		const termRows = this.config.getTerminalRows();
 
-		if (natural.length + spacerRows <= termRows) {
-			return renderFitsTerminal(natural, spacerRows);
+		// The spacer is padding for a stable cross-tab footprint, not content: when only the
+		// padding overflows, clamp it rather than entering the scroll partition, which assumes
+		// the middle region itself is longer than the window (#260).
+		if (natural.length <= termRows) {
+			return renderFitsTerminal(natural, Math.min(spacerRows, termRows - natural.length));
 		}
 
 		// OVERFLOW — apply 3-region partition with scroll-to-focus. The heading joins the
@@ -239,18 +255,23 @@ export class DialogView implements StatefulView<DialogProps> {
 			return renderChromeOnly(natural, top, bottomFixed, termRows);
 		}
 
-		const scrollStart = computeScrollStart(
-			strategy.focusedItemRowRange(width, state),
-			pinHeading ? 0 : headingHeight,
-			availableMiddle,
-			middleRows,
-		);
-		const scrollableMiddle = natural.slice(top + scrollStart, top + scrollStart + availableMiddle);
+		// Never slice past the middle region into the bottom-fixed rows, which are appended
+		// below — that would draw the bottom border and hint twice (#260).
+		const windowRows = Math.min(availableMiddle, middleRows);
+		const rowsBeforeBody = pinHeading ? 0 : headingHeight;
+		const focusedRange = strategy.focusedItemRowRange(width, state);
+		const scrollStart = computeScrollStart(focusedRange, rowsBeforeBody, windowRows, middleRows);
+		const scrollableMiddle = natural.slice(top + scrollStart, top + scrollStart + windowRows);
+		const focusedInWindow: [number, number] | undefined = focusedRange && [
+			rowsBeforeBody + focusedRange[0] - scrollStart,
+			rowsBeforeBody + focusedRange[1] - scrollStart,
+		];
 		decorateOverflow(
 			scrollableMiddle,
 			scrollStart > 0,
-			scrollStart + availableMiddle < middleRows,
+			scrollStart + windowRows < middleRows,
 			this.config.theme,
+			focusedInWindow,
 		);
 
 		const result = [...natural.slice(0, top), ...scrollableMiddle, ...natural.slice(natural.length - bottomFixed)];

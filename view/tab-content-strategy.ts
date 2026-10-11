@@ -243,7 +243,9 @@ export class SubmitTabStrategy implements TabContentStrategy {
 						"warning",
 						`${t("review.incomplete", INCOMPLETE_WARNING_PREFIX)} ${missing.join(", ")}`,
 					);
-		const out: Component[] = [new Spacer(1), new Text(promptText, 1, 0)];
+		// One row, never wrapped: `footerRowCount` counts it as one, and a wrapped prompt
+		// (long list of unanswered headers) would desync the chrome's row math (#261).
+		const out: Component[] = [new Spacer(1), new OneLineClippedText(promptText, 1)];
 		if (this.config.submitPicker) {
 			out.push(this.config.submitPicker);
 		} else {

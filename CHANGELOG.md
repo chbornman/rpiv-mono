@@ -7,6 +7,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- When a dialog is taller than its space, it no longer draws its bottom border and key hints twice. This happened when only the padding that keeps every tab the same height overflowed; the padding is now trimmed to fit instead (#260).
+- The ↑/↓ scroll markers no longer replace the focused option's row when the visible window is small (#261).
+- On the Submit tab, a long "Answer remaining questions" warning stays on one row instead of wrapping and pushing the bottom border out of view (#261).
+
 ## [2.13.0] - 2026-10-11
 
 ### Changed
