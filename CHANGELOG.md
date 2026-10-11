@@ -7,6 +7,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- The questionnaire no longer hangs when the extension is loaded from an esbuild ESM bundle: `view/dialog-builder.ts` and `view/tab-content-strategy.ts` imported each other at runtime, which jiti tolerates but esbuild turns into two async initializers awaiting each other (#208). The shared dialog copy moved to `view/dialog-copy.ts`; `dialog-builder.ts` re-exports it, so importers are unchanged. A test now fails on any runtime import cycle in the package.
+
 ## [2.13.2] - 2026-10-11
 
 ### Fixed
