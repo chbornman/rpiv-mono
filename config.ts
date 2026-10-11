@@ -7,6 +7,12 @@ export type CollapseKeySpec = string;
 export const DEFAULT_COLLAPSE_KEY: CollapseKeySpec = "ctrl+]";
 export const COLLAPSE_KEY_OFF: CollapseKeySpec = "off";
 
+/** Where the questionnaire mounts: a focused overlay over the transcript, or Pi's editor slot below it. */
+export type RenderMode = "overlay" | "inline";
+
+export const RENDER_MODE_OVERLAY: RenderMode = "overlay";
+export const RENDER_MODE_INLINE: RenderMode = "inline";
+
 export interface AskUserQuestionConfig {
 	guidance?: GuidanceFields;
 	/**
@@ -17,6 +23,12 @@ export interface AskUserQuestionConfig {
 	 * Pass `"off"` to disable the collapse shortcut entirely.
 	 */
 	collapseKey?: CollapseKeySpec;
+	/**
+	 * `"overlay"` (default) draws the dialog over the transcript as a focused overlay.
+	 * `"inline"` mounts it in Pi's editor slot below the transcript, so the transcript
+	 * keeps scrolling while a question is open (#253).
+	 */
+	renderMode?: RenderMode;
 }
 
 // Named keys accepted by pi-tui's `matchesKey` (keys.js switch on the parsed base key).
@@ -66,6 +78,12 @@ export function resolveCollapseKey(config: Pick<AskUserQuestionConfig, "collapse
 	if (raw === undefined || raw === "") return DEFAULT_COLLAPSE_KEY;
 	if (raw === COLLAPSE_KEY_OFF) return COLLAPSE_KEY_OFF;
 	return isValidCollapseKeySpec(raw) ? raw : DEFAULT_COLLAPSE_KEY;
+}
+
+/** Case/whitespace-insensitive; anything other than `"inline"` (including non-strings) resolves to the overlay. */
+export function resolveRenderMode(config: Pick<AskUserQuestionConfig, "renderMode">): RenderMode {
+	const raw = typeof config.renderMode === "string" ? config.renderMode.trim().toLowerCase() : undefined;
+	return raw === RENDER_MODE_INLINE ? RENDER_MODE_INLINE : RENDER_MODE_OVERLAY;
 }
 
 // The only compound-word names in SPECIAL_KEYS — first-letter capitalization

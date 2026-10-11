@@ -344,9 +344,11 @@ describe("Dialog overflow — indicator content", () => {
 		);
 		const lines = dlg.render(80);
 		expect(lines.length).toBeLessThanOrEqual(14);
-		// Top of middle region (index 4) is ↑, bottom (index 10 = 4+7-1) is ↓. At termRows=14
-		// with bottomFixed=3 (footerRowCount 4→2), availableMiddle = 14 - 4 - 3 = 7.
-		expect(stripAnsi(lines[4])).toBe("↑");
+		// The heading ("Q1?" + Spacer = 2 rows) is pinned below topFixed=4, so the scroll
+		// window starts at index 6. bottomFixed=3 → availableMiddle = 14 - 6 - 3 = 5, and
+		// its bottom is index 10.
+		expect(stripAnsi(lines[4])).toBe("Q1?");
+		expect(stripAnsi(lines[6])).toBe("↑");
 		expect(stripAnsi(lines[10])).toBe("↓");
 		// No combined glyph when there's room for two separate indicators.
 		expect(lines.some((l) => stripAnsi(l) === "↕")).toBe(false);
@@ -597,5 +599,77 @@ describe("Dialog overflow — notes open on the Submit tab (NFR-2)", () => {
 			.render(80)
 			.join("\n");
 		expect(open).not.toContain("● Note");
+	});
+});
+
+describe("Dialog overflow — the question stays visible while the body scrolls", () => {
+	const longQuestion = "Which caching approach should the plan use for the pricing lookups on checkout?";
+	const single = (question = "Pick one?"): QuestionData[] => [
+		{
+			question,
+			header: "Cache",
+			options: [
+				{ label: "A", description: "a" },
+				{ label: "B", description: "b" },
+			],
+		},
+	];
+	const bodyLines = Array.from({ length: 20 }, (_, i) => `<LINE ${i}>`);
+	const focusedDeep = (_w: number) => [15, 17] as [number, number];
+
+	it("pins the header badge and question above the scroll window when the focus is deep in the body", () => {
+		const lines = makeDialog(
+			makeConfig({
+				questions: single(),
+				getTerminalRows: () => 14,
+				getBodyHeight: () => 20,
+				getCurrentBodyHeight: () => 20,
+				previewPane: stubPreviewPane(bodyLines, focusedDeep),
+			}),
+		)
+			.render(80)
+			.map(stripAnsi);
+		expect(lines.length).toBeLessThanOrEqual(14);
+		expect(lines).toContain("Cache");
+		expect(lines).toContain("Pick one?");
+		expect(lines.some((l) => l.includes("<LINE 15>"))).toBe(true);
+		expect(lines.indexOf("Pick one?")).toBeLessThan(lines.indexOf("↑"));
+	});
+
+	it("measures a wrapped question in rendered rows, keeping every wrapped line and the focused row", () => {
+		const width = 40; // wraps the long question onto several rows
+		const lines = makeDialog(
+			makeConfig({
+				questions: single(longQuestion),
+				getTerminalRows: () => 18,
+				getBodyHeight: () => 20,
+				getCurrentBodyHeight: () => 20,
+				previewPane: stubPreviewPane(bodyLines, focusedDeep),
+			}),
+		)
+			.render(width)
+			.map(stripAnsi);
+		expect(lines.length).toBeLessThanOrEqual(18);
+		expect(lines.join(" ")).toContain("pricing lookups on checkout?");
+		expect(lines.some((l) => l.includes("<LINE 15>"))).toBe(true);
+	});
+
+	it("lets the heading scroll when pinning it would leave fewer than 3 body rows", () => {
+		// topFixed=2 (no tab bar), heading=4 (badge+spacer+question+spacer), bottomFixed=3:
+		// at 11 rows pinning leaves 2 body rows, so the heading scrolls away to reach the focus.
+		const lines = makeDialog(
+			makeConfig({
+				questions: single(),
+				getTerminalRows: () => 11,
+				getBodyHeight: () => 20,
+				getCurrentBodyHeight: () => 20,
+				previewPane: stubPreviewPane(bodyLines, focusedDeep),
+			}),
+		)
+			.render(80)
+			.map(stripAnsi);
+		expect(lines.length).toBeLessThanOrEqual(11);
+		expect(lines).not.toContain("Pick one?");
+		expect(lines.some((l) => l.includes("<LINE 15>"))).toBe(true);
 	});
 });

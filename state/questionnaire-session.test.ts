@@ -86,6 +86,7 @@ function makeSession(options: SessionTestOptions = {}) {
 		editInput: options.editInput ?? (async () => undefined),
 		collapseKey: "off",
 		canReopenWhileHidden: false,
+		rowBudget: (rows) => rows,
 	});
 	return { session, done };
 }

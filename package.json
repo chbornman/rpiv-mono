@@ -35,6 +35,7 @@
 		"config.ts",
 		"events.ts",
 		"index.ts",
+		"presentation.ts",
 		"reconcile.ts",
 		"LICENSE",
 		"locales/",

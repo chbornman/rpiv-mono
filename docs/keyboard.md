@@ -82,8 +82,12 @@ Because Pi routes no input to a hidden overlay, the collapse key is additionally
 at the raw terminal level. It only acts when the questionnaire is hidden or focused, so a
 different overlay on top of it (for example `/btw`) keeps its keystrokes.
 
-While collapsed, every keystroke other than cancel is ignored, so you cannot mutate
-answers you cannot see.
+With `renderMode: "inline"` there is no overlay to hide: collapse shrinks the dialog to its
+one-row hint in the editor area, it keeps focus, and the same key expands it without the
+raw listener. Inline, the transcript scrolls while the dialog is expanded too.
+
+While collapsed, every keystroke other than cancel or expand is ignored, so you cannot
+mutate answers you cannot see.
 
 The default `ctrl+]` is free in Terminal.app, iTerm2, Warp, tmux, zellij and screen. On
 keyboard layouts where `]` sits on the shifted layer — Latin American `es-AR` / `es-MX`,

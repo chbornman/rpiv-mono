@@ -5,6 +5,7 @@ import {
 	formatKeySpecForDisplay,
 	loadConfig,
 	resolveCollapseKey,
+	resolveRenderMode,
 	validateGuidanceFields,
 } from "./config.js";
 import {
@@ -15,6 +16,7 @@ import {
 } from "./events.js";
 // Static import is fine — rpc-fallback pulls only types + the i18n bridge,
 // none of the ~560ms TUI render graph that QuestionnaireSession lazy-loads.
+import { type Presentation, resolvePresentation } from "./presentation.js";
 import { type DialogUI, hasDialogUI, runRpcQuestionnaire } from "./rpc-fallback.js";
 import { displayLabel, t } from "./state/i18n-bridge.js";
 import { sentinelsToAppend } from "./state/row-intent.js";
@@ -190,10 +192,11 @@ function makeSessionFactory(config: {
 	itemsByTab: WrappingSelectItem[][];
 	collapseKey: string;
 	canReopenWhileHidden: boolean;
+	rowBudget: Presentation["rowBudget"];
 	sessionRef: SessionRef;
 	Session: SessionModule["QuestionnaireSession"];
 }) {
-	const { ctx, typed, itemsByTab, collapseKey, canReopenWhileHidden, sessionRef, Session } = config;
+	const { ctx, typed, itemsByTab, collapseKey, canReopenWhileHidden, rowBudget, sessionRef, Session } = config;
 	return (
 		tui: TUI,
 		theme: Theme,
@@ -226,6 +229,7 @@ function makeSessionFactory(config: {
 			},
 			collapseKey,
 			canReopenWhileHidden,
+			rowBudget,
 		});
 		sessionRef.current = session;
 		return session.component;
@@ -352,15 +356,22 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 			// with non-US layouts (e.g. Latin American, where `]` is shifted) can override
 			// via the `collapseKey` config field. `resolveCollapseKey` also accepts the
 			// sentinel value `"off"` to disable the shortcut entirely.
-			const collapseKey = resolveCollapseKey(loadConfig());
+			const config = loadConfig();
+			const collapseKey = resolveCollapseKey(config);
+			// Overlay (default) or Pi's editor slot (`renderMode: "inline"`, #253). An inline
+			// request degrades to the overlay while another questionnaire holds the slot.
+			const presentation = resolvePresentation(resolveRenderMode(config));
 
 			// Capture the overlay handle so the session can call `setHidden()` when the
 			// user toggles collapse, and register a raw terminal input listener for the
 			// same key so the toggle still works while the overlay is hidden (pi-tui does
-			// not route input to a hidden overlay's `component.handleInput`).
+			// not route input to a hidden overlay's `component.handleInput`). Inline has no
+			// handle to hide and keeps focus while collapsed, so it needs no listener.
 			const sessionRef: SessionRef = { current: null };
 			const overlayHandleRef: OverlayHandleRef = { current: undefined };
-			const removeOverlayInputListener = registerCollapseKeyListener(ctx, collapseKey, sessionRef, overlayHandleRef);
+			const removeOverlayInputListener = presentation.overlay
+				? registerCollapseKeyListener(ctx, collapseKey, sessionRef, overlayHandleRef)
+				: undefined;
 			// Hiding the overlay is only reversible through the raw listener above, so
 			// the session may emit `setHidden` only when it was actually registered;
 			// otherwise collapse falls back to the visible one-line row.
@@ -376,22 +387,25 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 						itemsByTab,
 						collapseKey,
 						canReopenWhileHidden,
+						rowBudget: presentation.rowBudget,
 						sessionRef,
 						Session: QuestionnaireSession,
 					}),
-					{
-						overlay: true,
-						overlayOptions: {
-							anchor: "bottom-center",
-							width: "100%",
-							maxHeight: "100%",
-							margin: { left: 0, right: 0, bottom: 0 },
-						},
-						onHandle: (handle) => {
-							overlayHandleRef.current = handle;
-							sessionRef.current?.setOverlayHandle(handle);
-						},
-					},
+					presentation.overlay
+						? {
+								overlay: true,
+								overlayOptions: {
+									anchor: "bottom-center",
+									width: "100%",
+									maxHeight: "100%",
+									margin: { left: 0, right: 0, bottom: 0 },
+								},
+								onHandle: (handle) => {
+									overlayHandleRef.current = handle;
+									sessionRef.current?.setOverlayHandle(handle);
+								},
+							}
+						: { overlay: false },
 				);
 
 				if (result === undefined) {
@@ -401,6 +415,7 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 				return buildQuestionnaireResponse(result, typed);
 			} finally {
 				removeOverlayInputListener?.();
+				presentation.release?.();
 				emitAskUserBlockedEvent(pi, false);
 			}
 		},
