@@ -237,6 +237,72 @@ describe("ask_user_question.execute — RPC dialog walker (ctx.mode === 'rpc')",
 	});
 });
 
+describe("ask_user_question.execute — RPC single-select replies", () => {
+	const answersOf = (r: Awaited<ReturnType<typeof run>>) =>
+		(r?.details as { answers: unknown[]; cancelled: boolean } | undefined) ?? { answers: [], cancelled: true };
+
+	it.each([
+		["the offered line", "2. B — b", { kind: "option", answer: "B" }],
+		["a bare index", "2", { kind: "option", answer: "B" }],
+		["an exact option label", "B", { kind: "option", answer: "B" }],
+		["free text (#299)", "B but change the title", { kind: "custom", answer: "B but change the title" }],
+		[
+			"free text starting with a digit (#299)",
+			"2 but change the title",
+			{ kind: "custom", answer: "2 but change the title" },
+		],
+	])("reads %s as the user's answer, never a dismissal", async (_name, reply, expected) => {
+		const tool = register();
+		const r = await run(tool, SINGLE, ctxRpc({ select: vi.fn(async () => reply) }));
+		expect(answersOf(r)).toMatchObject({ cancelled: false, answers: [expected] });
+	});
+
+	it("an empty reply is still a dismissal", async () => {
+		const tool = register();
+		const r = await run(tool, SINGLE, ctxRpc({ select: vi.fn(async () => "   ") }));
+		expect(answersOf(r).cancelled).toBe(true);
+	});
+
+	it("cancelling the 'Type something.' input returns to the options instead of cancelling (#142)", async () => {
+		const tool = register();
+		const replies = ["3. Type something.", "1. A — a"];
+		const select = vi.fn(async (_t: string, options: string[]) =>
+			replies.shift() === "1. A — a" ? options[0] : options.at(-1),
+		);
+		const input = vi.fn(async () => undefined);
+		const r = await run(tool, SINGLE, ctxRpc({ select, input }));
+		expect(select).toHaveBeenCalledTimes(2);
+		expect(input).toHaveBeenCalledOnce();
+		expect(answersOf(r)).toMatchObject({ cancelled: false, answers: [{ kind: "option", answer: "A" }] });
+	});
+
+	it("keeps earlier answers when a later question's follow-up is cancelled (#142)", async () => {
+		const tool = register();
+		const params = { questions: [SINGLE.questions[0], { ...SINGLE.questions[0], question: "And?", header: "Next" }] };
+		const replies = ["1. A — a", "3. Type something.", "2. B — b"];
+		const select = vi.fn(async () => replies.shift());
+		const r = await run(tool, params, ctxRpc({ select, input: vi.fn(async () => undefined) }));
+		expect(answersOf(r)).toMatchObject({
+			cancelled: false,
+			answers: [
+				{ question: "Which?", answer: "A" },
+				{ question: "And?", answer: "B" },
+			],
+		});
+	});
+
+	it("shows the option list in the 'Type something.' input so the user can refer to it (#194)", async () => {
+		const tool = register();
+		const select = vi.fn(async (_t: string, options: string[]) => options.at(-1));
+		const input = vi.fn(async (_title: string) => "neither");
+		await run(tool, SINGLE, ctxRpc({ select, input }));
+		const title = input.mock.calls[0]?.[0] as string;
+		expect(title).toContain("1. A — a");
+		expect(title).toContain("2. B — b");
+		expect(title).toContain("Type your answer:");
+	});
+});
+
 describe("ask_user_question.execute — dialog walker as custom()-undefined backstop", () => {
 	// RPC builds that predate ctx.mode: the mode guard misses, custom() resolves
 	// undefined, and the walker must still run off the capability signal.

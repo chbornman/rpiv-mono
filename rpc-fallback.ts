@@ -81,8 +81,8 @@ function buildPreviewBlock(question: QuestionData): string {
 }
 
 /**
- * Walk the questionnaire one native dialog at a time. Dismissing any dialog
- * (the primitive resolves `undefined`) cancels the whole questionnaire —
+ * Walk the questionnaire one native dialog at a time. Dismissing a question's
+ * dialog (the primitive resolves `undefined`) cancels the whole questionnaire —
  * mirroring Esc in the TUI — and the shared envelope emits DECLINE. A
  * `QuestionAnswer` is produced per question otherwise, so the envelope is
  * identical to the TUI path's.
@@ -99,7 +99,19 @@ export async function runRpcQuestionnaire(ui: DialogUI, params: QuestionParams):
 	return { answers, cancelled: false };
 }
 
-/** `undefined` means the user dismissed the dialog (cancel the questionnaire). */
+/**
+ * `undefined` means the user dismissed the option dialog (cancel the questionnaire).
+ *
+ * Hosts return the chosen option line, but some also let the user type a reply in
+ * place of picking (T3 Code's "Type your own answer" box) and return that text
+ * (#299). A reply is therefore read as: an offered line → that option; a bare
+ * number → that option (hosts that return an index); a reply equal to an option
+ * label → that option; any other non-empty text → the user's own answer, verbatim
+ * — never a dismissal, and never "option N plus discarded text". Cancelling the
+ * "Type something." follow-up returns to the options instead of cancelling the
+ * whole questionnaire (#142), and that input repeats the option list so the user
+ * can refer to it while typing (#194).
+ */
 async function askSingleSelect(
 	ui: DialogUI,
 	q: QuestionData,
@@ -108,26 +120,46 @@ async function askSingleSelect(
 ): Promise<QuestionAnswer | undefined> {
 	const options = q.options.map(formatOptionLine);
 	options.push(`${q.options.length + 1}. ${displayLabel("other")}`);
-	const chosen = await ui.select(`${header}${q.question}${buildPreviewBlock(q)}`, options);
-	if (chosen == null) return undefined;
-	const idx = parseIndex(chosen, options.length);
-	// A host returning something outside the offered list is indistinguishable
-	// from a dismissal — treat it as one rather than fabricate an answer.
-	if (idx == null) return undefined;
-	if (idx < q.options.length) {
-		const o = q.options[idx];
-		return {
-			questionIndex,
-			question: q.question,
-			kind: "option",
-			answer: o.label,
-			preview: o.preview && o.preview.length > 0 ? o.preview : undefined,
-		};
+	const title = `${header}${q.question}${buildPreviewBlock(q)}`;
+	for (;;) {
+		const chosen = await ui.select(title, options);
+		if (chosen == null) return undefined;
+		const reply = chosen.trim();
+		if (reply.length === 0) return undefined;
+		const idx = resolveSingleSelectReply(chosen, reply, options, q);
+		if (idx === undefined) return { questionIndex, question: q.question, kind: "custom", answer: reply };
+		if (idx < q.options.length) {
+			const o = q.options[idx];
+			return {
+				questionIndex,
+				question: q.question,
+				kind: "option",
+				answer: o.label,
+				preview: o.preview && o.preview.length > 0 ? o.preview : undefined,
+			};
+		}
+		// "Type something." sentinel → free-text follow-up; cancelling it goes back to the options.
+		const typed = await ui.input(
+			`${header}${q.question}\n\n${q.options.map(formatOptionLine).join("\n")}\n\n${t("rpc.custom_answer_title", CUSTOM_ANSWER_TITLE)}`,
+			"",
+		);
+		if (typed == null) continue;
+		return { questionIndex, question: q.question, kind: "custom", answer: typed };
 	}
-	// "Type something." sentinel → free-text follow-up.
-	const typed = await ui.input(`${header}${q.question}\n\n${t("rpc.custom_answer_title", CUSTOM_ANSWER_TITLE)}`, "");
-	if (typed == null) return undefined;
-	return { questionIndex, question: q.question, kind: "custom", answer: typed };
+}
+
+/** Option index for a select reply, or `undefined` when the reply is the user's own text. */
+function resolveSingleSelectReply(
+	chosen: string,
+	reply: string,
+	lines: readonly string[],
+	q: QuestionData,
+): number | undefined {
+	const line = lines.indexOf(chosen);
+	if (line >= 0) return line;
+	if (/^\d+\.?$/.test(reply)) return parseIndex(reply, lines.length) ?? undefined;
+	const label = q.options.findIndex((o) => o.label === reply);
+	return label >= 0 ? label : undefined;
 }
 
 /** `undefined` means the user dismissed the dialog (cancel the questionnaire). */

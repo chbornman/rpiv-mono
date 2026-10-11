@@ -7,6 +7,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- A partial submit now tells the model which questions were left blank: the envelope gains an `unanswered: "<question>", …` segment after the answers (before any global note), and `details.unanswered` lists their indexes. Previously a skipped question simply had no segment, so the model could read "You can now continue with the user's answers in mind" as everything settled. Fully answered results are byte-identical (#291).
+
+### Fixed
+
+- RPC hosts (VS Code, Zed, T3 Code, pi-web, other ACP clients): a reply typed into the option picker instead of picking an option is now the user's own answer. It was read as a dismissal (the model got "declined"), and a reply starting with a digit, like "2 but change the title", was read as option 2 with the rest dropped (#299).
+- RPC hosts: cancelling the "Type your answer" box now returns to the options instead of cancelling the whole questionnaire and losing the answers already given (#142). That box also lists the options with their descriptions, so they can be referred to while typing (#194).
+- Tool calls whose `questions` (or its items, or their `options`) arrive JSON-encoded as strings, as some vLLM/LiteLLM-served models intermittently emit, are now decoded before Pi validates them instead of failing with `questions.0: must be object` (#244).
+
 ## [2.13.3] - 2026-10-11
 
 ### Fixed

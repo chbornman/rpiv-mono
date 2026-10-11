@@ -26,7 +26,7 @@ import {
 import { type DialogUI, hasDialogUI, runRpcQuestionnaire } from "./rpc-fallback.js";
 import { displayLabel, t } from "./state/i18n-bridge.js";
 import { sentinelsToAppend } from "./state/row-intent.js";
-import { normalizeQuestionParams } from "./tool/normalize-params.js";
+import { normalizeQuestionParams, prepareQuestionArguments } from "./tool/normalize-params.js";
 import { buildQuestionnaireResponse, buildToolResult } from "./tool/response-envelope.js";
 import {
 	MAX_OPTIONS,
@@ -381,6 +381,8 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 		promptSnippet: guidance.promptSnippet ?? DEFAULT_PROMPT_SNIPPET,
 		promptGuidelines: guidance.promptGuidelines ?? DEFAULT_PROMPT_GUIDELINES,
 		parameters: QuestionParamsSchema,
+		// Undo double-encoded nested arguments before Pi validates them (#244).
+		prepareArguments: prepareQuestionArguments,
 
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
 			// Line-terminator normalization runs once here, ahead of validation, so

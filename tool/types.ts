@@ -146,6 +146,12 @@ export interface QuestionnaireResult {
 	 * byte-identical (`!("globalNote" in result)` holds).
 	 */
 	globalNote?: string;
+	/**
+	 * Indexes of the questions left blank on a partial submit (#291), set only by the
+	 * envelope builder on an answered result — never present when every question is
+	 * answered or the result is a decline, so those stay byte-identical.
+	 */
+	unanswered?: number[];
 	error?: QuestionnaireError;
 }
 
