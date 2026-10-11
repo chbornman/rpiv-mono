@@ -7,6 +7,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Long option previews fit the space the questionnaire has instead of being cut off by its scroll window (#210). Since 2.13 caps the dialog at 70% of the terminal, a short terminal used to show a preview box with its bottom border and "N lines hidden" note cut off, or, when the preview sits below the options on a narrow terminal, no preview at all. The preview box now shrinks to the rows available but always closes and counts the hidden lines, the options scroll around the focused one when they don't fit, and the preview of the focused option stays in view.
+
 ## [2.13.1] - 2026-10-11
 
 ### Fixed

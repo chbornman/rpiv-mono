@@ -194,6 +194,7 @@ class QuestionnaireBuilder {
 		});
 		const preview = new PreviewPane({
 			question,
+			theme: this.theme,
 			getTerminalWidth: this.getTerminalWidth,
 			optionListView: optionList,
 			previewBlock,

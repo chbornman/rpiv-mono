@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { getKeybindings } from "@earendil-works/pi-tui";
 import { createMockCtx, createMockPi } from "@juicesharp/rpiv-test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -144,6 +145,49 @@ describe("inline presentation", () => {
 		});
 		await run(fourDescribedOptions);
 	});
+
+	it.each([
+		{ cols: 120, rows: 24, layout: "side-by-side", described: false },
+		{ cols: 90, rows: 30, layout: "stacked", described: true },
+	])(
+		"fits a long preview into the inline budget as a closed box ($layout, $cols×$rows) — #210",
+		async ({ cols, rows, described }) => {
+			initTheme(); // markdown preview rendering reads Pi's theme
+			const code = (tag: string) =>
+				`\`\`\`\n${Array.from({ length: 40 }, (_, i) => `${tag}${i + 1}`).join("\n")}\n\`\`\``;
+			const withPreviews = {
+				questions: [
+					{
+						question: "Apply which patch to the pricing cache?",
+						header: "Patch",
+						options: [1, 2, 3, 4].slice(0, described ? 4 : 2).map((i) => ({
+							label: `Patch ${i}`,
+							description: described ? `Trade-off summary for patch ${i}, one sentence long.` : "",
+							preview: code(`L${i}_`),
+						})),
+					},
+				],
+			};
+			const { run } = setup(async (factory) => {
+				const lines = factory(
+					{ requestRender() {}, terminal: { columns: cols, rows } },
+					theme,
+					getKeybindings(),
+					() => {},
+				)
+					.render(cols)
+					.map((l) => l.replace(/\x1b\[[0-9;:]*m/g, ""));
+				expect(lines.length).toBeLessThanOrEqual(Math.floor(rows * 0.7));
+				expect(lines.some((l) => l.includes("Apply which patch"))).toBe(true);
+				expect(lines.some((l) => l.includes("L1_1"))).toBe(true); // the focused option's preview is in view
+				expect(lines.some((l) => l.includes("┌"))).toBe(true);
+				expect(lines.some((l) => l.includes("└") && l.includes("lines hidden"))).toBe(true);
+				expect(lines.at(-1)).toContain(HINT_PART_CANCEL);
+				return { answers: [], cancelled: true };
+			});
+			await run(withPreviews);
+		},
+	);
 
 	it("uses a host's whole allocated band instead of capping it again", async () => {
 		// rpiv-pi's lane console reports its band as terminal.rows and marks it allocated.

@@ -5,6 +5,7 @@ import type { QuestionnaireState } from "../state/state.js";
 import type { QuestionData } from "../tool/types.js";
 import type { PreviewPaneProps } from "./components/preview/preview-pane.js";
 import type { TabBar } from "./components/tab-bar.js";
+import { computeScrollStart, decorateOverflow } from "./scroll-window.js";
 import type { StatefulView } from "./stateful-view.js";
 import type { TabComponents } from "./tab-components.js";
 import { QuestionTabStrategy, SubmitTabStrategy, type TabContentStrategy } from "./tab-content-strategy.js";
@@ -64,10 +65,6 @@ export const INCOMPLETE_WARNING_PREFIX = "⚠ Answer remaining questions before 
  */
 const MIN_SCROLL_ROWS_WITH_PINNED_HEADING = 3;
 
-const OVERFLOW_UP = "↑";
-const OVERFLOW_DOWN = "↓";
-const OVERFLOW_BOTH = "↕";
-
 /** No-overflow path: append the residual spacer rows after the footer. */
 function renderFitsTerminal(natural: string[], spacerRows: number): string[] {
 	return spacerRows > 0 ? [...natural, ...Array<string>(spacerRows).fill("")] : natural;
@@ -77,49 +74,6 @@ function renderFitsTerminal(natural: string[], spacerRows: number): string[] {
 function renderChromeOnly(natural: string[], topFixed: number, bottomFixed: number, termRows: number): string[] {
 	const chromeOnly = [...natural.slice(0, topFixed), ...natural.slice(natural.length - bottomFixed)];
 	return chromeOnly.length > termRows ? chromeOnly.slice(0, termRows) : chromeOnly;
-}
-
-/** Scroll window start, centered on the focused option; top-anchored when there is no interactive focus. */
-function computeScrollStart(
-	bodyRange: [number, number] | undefined,
-	rowsBeforeBody: number,
-	availableMiddle: number,
-	middleRows: number,
-): number {
-	if (!bodyRange) return 0;
-	const focusedRowInMiddle = rowsBeforeBody + bodyRange[0];
-	const focusedHeight = bodyRange[1] - bodyRange[0];
-	// Center the focused item vertically in the available middle space.
-	const idealStart = focusedRowInMiddle - Math.floor(Math.max(0, availableMiddle - focusedHeight) / 2);
-	return Math.max(0, Math.min(idealStart, middleRows - availableMiddle));
-}
-
-/**
- * Mark the scroll window edges with overflow arrows; combined ↕ on a single-row middle.
- * An arrow replaces the row it lands on, so rows inside `protectedRows` (the focused item,
- * in window coordinates, end-exclusive) are never drawn over — losing the affordance beats
- * losing the row the user is on (#261).
- */
-function decorateOverflow(
-	scrollableMiddle: string[],
-	hasUp: boolean,
-	hasDown: boolean,
-	theme: Theme,
-	protectedRows: readonly [number, number] | undefined,
-): void {
-	const drawable = (row: number) => !protectedRows || row < protectedRows[0] || row >= protectedRows[1];
-	if (hasUp && hasDown && scrollableMiddle.length === 1) {
-		// Single-row middle: combined ↕ avoids the prior collision where ↓ overwrote ↑.
-		if (drawable(0)) scrollableMiddle[0] = theme.fg("dim", OVERFLOW_BOTH);
-		return;
-	}
-	if (hasUp && scrollableMiddle.length > 0 && drawable(0)) {
-		scrollableMiddle[0] = theme.fg("dim", OVERFLOW_UP);
-	}
-	const last = scrollableMiddle.length - 1;
-	if (hasDown && last > 0 && drawable(last)) {
-		scrollableMiddle[last] = theme.fg("dim", OVERFLOW_DOWN);
-	}
 }
 
 export type DialogState = QuestionnaireState;
@@ -215,14 +169,22 @@ export class DialogView implements StatefulView<DialogProps> {
 
 		// Cache heading rows (avoid double construction in render and container build).
 		const headingRowCache = strategy.headingRows(state);
-
-		// Build container WITHOUT residual spacer — spacer handled below based on overflow.
-		const natural = this.buildContainerFromStrategy(strategy, headingRowCache).render(width);
+		// Rendered rows, not components: a long question wraps.
+		const headingHeight = headingRowCache.reduce((rows, c) => rows + c.render(width).length, 0);
 
 		// Fixed region sizes (deterministic from structure).
 		// TabBar.render() returns [tabLine, ""] — always 2 rows.
 		const topFixed = 1 + (this.config.isMulti && this.config.tabBar ? 2 : 0) + 1;
 		const bottomFixed = 1 + strategy.footerRowCount;
+		const termRows = this.config.getTerminalRows();
+
+		this.allotBodyRows(
+			onSubmit,
+			termRows - topFixed - headingHeight - bottomFixed - this.rowsAroundBody(strategy, width),
+		);
+
+		// Build container WITHOUT residual spacer — spacer handled below based on overflow.
+		const natural = this.buildContainerFromStrategy(strategy, headingRowCache).render(width);
 
 		// Residual spacer: equalizes total height across tabs (only needed when no overflow).
 		const spacerRows = Math.max(
@@ -232,8 +194,6 @@ export class DialogView implements StatefulView<DialogProps> {
 				strategy.bodyHeight(width, state) -
 				strategy.footerRowCount,
 		);
-
-		const termRows = this.config.getTerminalRows();
 
 		// The spacer is padding for a stable cross-tab footprint, not content: when only the
 		// padding overflows, clamp it rather than entering the scroll partition, which assumes
@@ -246,7 +206,6 @@ export class DialogView implements StatefulView<DialogProps> {
 		// fixed top whenever the body keeps a usable window, so the question being answered
 		// never scrolls out of view; heading height is measured in rendered rows, since a
 		// long question wraps.
-		const headingHeight = headingRowCache.reduce((rows, c) => rows + c.render(width).length, 0);
 		const pinHeading = termRows - topFixed - headingHeight - bottomFixed >= MIN_SCROLL_ROWS_WITH_PINNED_HEADING;
 		const top = pinHeading ? topFixed + headingHeight : topFixed;
 		const middleRows = natural.length - top - bottomFixed;
@@ -278,6 +237,26 @@ export class DialogView implements StatefulView<DialogProps> {
 		// Safety: never exceed terminal rows (covers the availableMiddle === 0 case
 		// where topFixed + bottomFixed > termRows).
 		return result.length > termRows ? result.slice(0, termRows) : result;
+	}
+
+	/** Rows between the body and the bottom border: the body's trailing Spacer(1) plus any mid rows (e.g. the notes editor). */
+	private rowsAroundBody(strategy: TabContentStrategy, width: number): number {
+		return 1 + strategy.midRows(this.liveProps.state).reduce((rows, c) => rows + c.render(width).length, 0);
+	}
+
+	/**
+	 * Hand the active question's preview pane the rows its body may use this frame, so a body
+	 * taller than the space fits itself — options scroll in their column, the preview box
+	 * shrinks but closes — instead of the scroll window below slicing through it (#210).
+	 * Other tabs' panes are cleared so a stale allowance never skews the cross-tab height.
+	 * Below `MIN_SCROLL_ROWS_WITH_PINNED_HEADING` the dialog's own scroll window takes over.
+	 */
+	private allotBodyRows(onSubmit: boolean, bodyRows: number): void {
+		const active =
+			onSubmit || bodyRows < MIN_SCROLL_ROWS_WITH_PINNED_HEADING ? undefined : this.liveProps.activePreviewPane;
+		for (const tab of this.config.tabsByIndex) {
+			tab.preview?.setRowAllowance?.(tab.preview === active ? bodyRows : undefined);
+		}
 	}
 
 	private buildContainerFromStrategy(strategy: TabContentStrategy, headingRowCache: Component[]): Container {

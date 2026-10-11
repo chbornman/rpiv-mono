@@ -80,6 +80,7 @@ function makePane(question: QuestionData, getWidth: () => number = () => 120) {
 	const previewBlock = new PreviewBlockRenderer({ question, theme, markdownTheme });
 	const pane = new PreviewPane({
 		question,
+		theme,
 		getTerminalWidth: getWidth,
 		optionListView,
 		previewBlock,
@@ -769,6 +770,7 @@ describe("PreviewPane composes OptionListView state into render output", () => {
 		const previewBlock = new PreviewBlockRenderer({ question: otherQuestion, theme, markdownTheme });
 		const pane = new PreviewPane({
 			question: otherQuestion,
+			theme,
 			getTerminalWidth: () => 120,
 			optionListView,
 			previewBlock,
@@ -849,6 +851,7 @@ describe("PreviewPane — adaptive left column width", () => {
 		const previewBlock = new PreviewBlockRenderer({ question, theme, markdownTheme });
 		const pane = new PreviewPane({
 			question,
+			theme,
 			getTerminalWidth: () => 120,
 			optionListView,
 			previewBlock,
@@ -903,6 +906,7 @@ describe("PreviewPane — inputMode (custom-answer full-width while typing)", ()
 		const previewBlock = new PreviewBlockRenderer({ question: previewQuestion, theme, markdownTheme });
 		const pane = new PreviewPane({
 			question: previewQuestion,
+			theme,
 			getTerminalWidth: getWidth,
 			optionListView,
 			previewBlock,
