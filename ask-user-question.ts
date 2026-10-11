@@ -5,7 +5,6 @@ import {
 	formatKeySpecForDisplay,
 	loadConfig,
 	resolveCollapseKey,
-	resolveRenderMode,
 	validateGuidanceFields,
 } from "./config.js";
 import {
@@ -16,7 +15,14 @@ import {
 } from "./events.js";
 // Static import is fine — rpc-fallback pulls only types + the i18n bridge,
 // none of the ~560ms TUI render graph that QuestionnaireSession lazy-loads.
-import { type Presentation, resolvePresentation, rowBudgetForHost } from "./presentation.js";
+import {
+	mustYieldInlineSlot,
+	type Presentation,
+	resolvePresentation,
+	rowBudgetForHost,
+	STACKED_OVERLAY_PRESENTATION,
+	YIELD_TO_OVERLAY,
+} from "./presentation.js";
 import { type DialogUI, hasDialogUI, runRpcQuestionnaire } from "./rpc-fallback.js";
 import { displayLabel, t } from "./state/i18n-bridge.js";
 import { sentinelsToAppend } from "./state/row-intent.js";
@@ -192,17 +198,23 @@ function makeSessionFactory(config: {
 	itemsByTab: WrappingSelectItem[][];
 	collapseKey: string;
 	canReopenWhileHidden: boolean;
-	rowBudget: Presentation["rowBudget"];
+	presentation: Presentation;
 	sessionRef: SessionRef;
 	Session: SessionModule["QuestionnaireSession"];
 }) {
-	const { ctx, typed, itemsByTab, collapseKey, canReopenWhileHidden, rowBudget, sessionRef, Session } = config;
+	const { ctx, typed, itemsByTab, collapseKey, canReopenWhileHidden, presentation, sessionRef, Session } = config;
 	return (
 		tui: TUI,
 		theme: Theme,
 		keybindings: import("./state/questionnaire-session.js").QuestionnaireSessionConfig["keybindings"],
 		done: (result: QuestionnaireResult) => void,
 	): import("./state/questionnaire-session.js").QuestionnaireSessionComponent => {
+		// The factory runs at mount time — the first point the TUI is reachable — so this is
+		// where an inline mount notices an overlay already on screen and gives the slot up.
+		if (!presentation.overlay && mustYieldInlineSlot(tui)) {
+			done(YIELD_TO_OVERLAY);
+			return INERT_COMPONENT;
+		}
 		const session = new Session({
 			tui,
 			theme,
@@ -229,11 +241,67 @@ function makeSessionFactory(config: {
 			},
 			collapseKey,
 			canReopenWhileHidden,
-			rowBudget: rowBudgetForHost(tui.terminal, rowBudget),
+			rowBudget: rowBudgetForHost(tui.terminal, presentation.rowBudget),
 		});
 		sessionRef.current = session;
 		return session.component;
 	};
+}
+
+/** Stand-in returned by a mount that resolved before mounting (Pi discards it unmounted). */
+const INERT_COMPONENT: import("./state/questionnaire-session.js").QuestionnaireSessionComponent = {
+	render: () => [],
+	invalidate: () => {},
+	handleInput: () => {},
+};
+
+/**
+ * One `ctx.ui.custom` mount under `presentation`. The overlay additionally gets its handle
+ * captured (so collapse can `setHidden()`) and a raw terminal listener for the collapse key,
+ * which stays reachable while the overlay is hidden (pi-tui routes no input to a hidden
+ * overlay's `component.handleInput`). Inline has no handle to hide and keeps focus while
+ * collapsed, so it needs no listener.
+ */
+async function mountQuestionnaire(config: {
+	ctx: ExtensionContext;
+	typed: QuestionParams;
+	itemsByTab: WrappingSelectItem[][];
+	collapseKey: string;
+	presentation: Presentation;
+	Session: SessionModule["QuestionnaireSession"];
+}): Promise<QuestionnaireResult | undefined> {
+	const { ctx, collapseKey, presentation } = config;
+	const sessionRef: SessionRef = { current: null };
+	const overlayHandleRef: OverlayHandleRef = { current: undefined };
+	const removeOverlayInputListener = presentation.hideOnCollapse
+		? registerCollapseKeyListener(ctx, collapseKey, sessionRef, overlayHandleRef)
+		: undefined;
+	// Hiding the overlay is only reversible through the raw listener above, so the session
+	// may emit `setHidden` only when it was actually registered; otherwise collapse falls
+	// back to the visible one-line row.
+	const canReopenWhileHidden = removeOverlayInputListener !== undefined;
+	try {
+		return await ctx.ui.custom<QuestionnaireResult>(
+			makeSessionFactory({ ...config, canReopenWhileHidden, sessionRef }),
+			presentation.overlay
+				? {
+						overlay: true,
+						overlayOptions: {
+							anchor: "bottom-center",
+							width: "100%",
+							maxHeight: "100%",
+							margin: { left: 0, right: 0, bottom: 0 },
+						},
+						onHandle: (handle) => {
+							overlayHandleRef.current = handle;
+							sessionRef.current?.setOverlayHandle(handle);
+						},
+					}
+				: { overlay: false },
+		);
+	} finally {
+		removeOverlayInputListener?.();
+	}
 }
 
 /**
@@ -356,57 +424,23 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 			// with non-US layouts (e.g. Latin American, where `]` is shifted) can override
 			// via the `collapseKey` config field. `resolveCollapseKey` also accepts the
 			// sentinel value `"off"` to disable the shortcut entirely.
-			const config = loadConfig();
-			const collapseKey = resolveCollapseKey(config);
-			// Pi's editor slot (default, #253) or a focused overlay (`renderMode: "overlay"`).
-			// An inline request degrades to the overlay while another questionnaire holds the slot.
-			const presentation = resolvePresentation(resolveRenderMode(config));
-
-			// Capture the overlay handle so the session can call `setHidden()` when the
-			// user toggles collapse, and register a raw terminal input listener for the
-			// same key so the toggle still works while the overlay is hidden (pi-tui does
-			// not route input to a hidden overlay's `component.handleInput`). Inline has no
-			// handle to hide and keeps focus while collapsed, so it needs no listener.
-			const sessionRef: SessionRef = { current: null };
-			const overlayHandleRef: OverlayHandleRef = { current: undefined };
-			const removeOverlayInputListener = presentation.overlay
-				? registerCollapseKeyListener(ctx, collapseKey, sessionRef, overlayHandleRef)
-				: undefined;
-			// Hiding the overlay is only reversible through the raw listener above, so
-			// the session may emit `setHidden` only when it was actually registered;
-			// otherwise collapse falls back to the visible one-line row.
-			const canReopenWhileHidden = removeOverlayInputListener !== undefined;
+			const collapseKey = resolveCollapseKey(loadConfig());
+			// Pi's editor slot (#253); the overlay only while another questionnaire holds the slot,
+			// or stacked when another overlay is already on screen (see below).
+			let presentation = resolvePresentation();
+			const mount = (p: Presentation) =>
+				mountQuestionnaire({ ctx, typed, itemsByTab, collapseKey, presentation: p, Session: QuestionnaireSession });
 
 			emitAskUserBlockedEvent(pi, true);
 			try {
 				emitTerminalAttention();
-				const result = await ctx.ui.custom<QuestionnaireResult>(
-					makeSessionFactory({
-						ctx,
-						typed,
-						itemsByTab,
-						collapseKey,
-						canReopenWhileHidden,
-						rowBudget: presentation.rowBudget,
-						sessionRef,
-						Session: QuestionnaireSession,
-					}),
-					presentation.overlay
-						? {
-								overlay: true,
-								overlayOptions: {
-									anchor: "bottom-center",
-									width: "100%",
-									maxHeight: "100%",
-									margin: { left: 0, right: 0, bottom: 0 },
-								},
-								onHandle: (handle) => {
-									overlayHandleRef.current = handle;
-									sessionRef.current?.setOverlayHandle(handle);
-								},
-							}
-						: { overlay: false },
-				);
+				let result = await mount(presentation);
+				if (result === YIELD_TO_OVERLAY) {
+					// Another overlay was on screen: stack on top of it instead (see mustYieldInlineSlot).
+					presentation.release?.();
+					presentation = STACKED_OVERLAY_PRESENTATION;
+					result = await mount(presentation);
+				}
 
 				if (result === undefined) {
 					return resolveUndefinedResult(ctx, typed);
@@ -414,7 +448,6 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 
 				return buildQuestionnaireResponse(result, typed);
 			} finally {
-				removeOverlayInputListener?.();
 				presentation.release?.();
 				emitAskUserBlockedEvent(pi, false);
 			}

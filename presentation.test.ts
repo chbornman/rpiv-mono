@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { RENDER_MODE_INLINE, RENDER_MODE_OVERLAY } from "./config.js";
 import {
 	fullRowBudget,
 	HOST_ALLOCATED_ROWS,
 	INLINE_MIN_ROWS,
 	inlineRowBudget,
+	mustYieldInlineSlot,
 	resolvePresentation,
 	rowBudgetForHost,
 } from "./presentation.js";
@@ -24,24 +24,18 @@ describe("row budgets", () => {
 });
 
 describe("resolvePresentation", () => {
-	it("gives the overlay no slot to release", () => {
-		const p = resolvePresentation(RENDER_MODE_OVERLAY);
-		expect(p).toMatchObject({ overlay: true, rowBudget: fullRowBudget });
-		expect(p.release).toBeUndefined();
-	});
-
-	it("holds the inline slot until released, degrading contenders to the overlay", () => {
-		const first = resolvePresentation(RENDER_MODE_INLINE);
+	it("holds the inline slot until released, degrading contenders to a hideable overlay", () => {
+		const first = resolvePresentation();
 		expect(first).toMatchObject({ overlay: false, rowBudget: inlineRowBudget });
-		const second = resolvePresentation(RENDER_MODE_INLINE);
-		expect(second).toMatchObject({ overlay: true, rowBudget: fullRowBudget });
+		const second = resolvePresentation();
+		expect(second).toMatchObject({ overlay: true, rowBudget: fullRowBudget, hideOnCollapse: true });
 		expect(second.release).toBeUndefined();
 
 		first.release?.();
 		// Idempotent: a double release must not free a slot someone else now holds.
-		const third = resolvePresentation(RENDER_MODE_INLINE);
+		const third = resolvePresentation();
 		first.release?.();
-		expect(resolvePresentation(RENDER_MODE_INLINE).overlay).toBe(true);
+		expect(resolvePresentation().overlay).toBe(true);
 		third.release?.();
 	});
 });
@@ -54,5 +48,24 @@ describe("rowBudgetForHost", () => {
 	it("uses every reported row when the host has already allocated them", () => {
 		const allocated = { rows: 19, [HOST_ALLOCATED_ROWS]: true };
 		expect(rowBudgetForHost(allocated, inlineRowBudget)).toBe(fullRowBudget);
+	});
+});
+
+describe("mustYieldInlineSlot", () => {
+	const terminal = { rows: 24 };
+
+	it("keeps the slot when nothing is on screen, or the host cannot say", () => {
+		expect(mustYieldInlineSlot({ terminal, hasOverlay: () => false })).toBe(false);
+		expect(mustYieldInlineSlot({ terminal })).toBe(false);
+	});
+
+	it("yields when another overlay is already showing", () => {
+		expect(mustYieldInlineSlot({ terminal, hasOverlay: () => true })).toBe(true);
+	});
+
+	it("leaves a host that allocates the rows itself in charge of its geometry", () => {
+		expect(mustYieldInlineSlot({ terminal: { rows: 19, [HOST_ALLOCATED_ROWS]: true }, hasOverlay: () => true })).toBe(
+			false,
+		);
 	});
 });

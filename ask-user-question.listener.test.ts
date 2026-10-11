@@ -4,6 +4,7 @@ import { createMockPi } from "@juicesharp/rpiv-test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAskUserQuestionTool } from "./ask-user-question.js";
 import type { AskUserQuestionConfig } from "./config.js";
+import { type Presentation, resolvePresentation } from "./presentation.js";
 
 /**
  * Integration tests for the raw `ctx.ui.onTerminalInput` collapse listener.
@@ -114,20 +115,20 @@ const home = process.env.HOME ?? "";
 const configDir = join(home, ".config", "rpiv-ask-user-question");
 const configPath = join(configDir, "config.json");
 
-// The raw listener exists only for the overlay presentation; inline (the default) never
-// registers it, so every case here pins `renderMode: "overlay"`.
-function writeConfig(config: AskUserQuestionConfig = {}): void {
-	mkdirSync(configDir, { recursive: true });
-	writeFileSync(configPath, JSON.stringify({ renderMode: "overlay", ...config } satisfies AskUserQuestionConfig));
-}
-
 function writeCollapseKeyConfig(collapseKey: string): void {
-	writeConfig({ collapseKey });
+	mkdirSync(configDir, { recursive: true });
+	writeFileSync(configPath, JSON.stringify({ collapseKey } satisfies AskUserQuestionConfig));
 }
 
-beforeEach(() => writeConfig());
+// The raw listener belongs to the overlay, which a questionnaire uses only as a fallback.
+// Holding the inline slot (as a concurrent questionnaire would) routes each case here to it.
+let slotHolder: Presentation | undefined;
+beforeEach(() => {
+	slotHolder = resolvePresentation();
+});
 
 afterEach(() => {
+	slotHolder?.release?.();
 	if (existsSync(configPath)) rmSync(configPath);
 });
 

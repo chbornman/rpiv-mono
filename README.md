@@ -51,7 +51,6 @@ Optional. Settings live in `~/.config/rpiv-ask-user-question/config.json`; the f
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| `renderMode` | `"inline"` puts the dialog below the transcript in Pi's editor area, so the transcript keeps scrolling while a question is open; `"overlay"` draws it over the transcript, the previous presentation. | `"inline"` |
 | `collapseKey` | Key that collapses and expands the dialog. Accepts Pi keybinding ids such as `alt+o`; `"off"` disables the shortcut. | `"ctrl+]"` |
 | `guidance.description` | Full replacement for the tool description the model sees. A non-empty string replaces the built-in text entirely — no merging. | built-in description |
 | `guidance.promptSnippet` | One-line description of the tool in the system prompt — tune how eagerly the model asks. | built-in snippet |

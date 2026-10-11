@@ -9,12 +9,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- The questionnaire now opens inline by default: in Pi's editor area below the transcript, where Pi's own prompts appear, instead of as a focused overlay over it. In fullscreen mode `PageUp`/`PageDown` and the mouse wheel keep scrolling the transcript while a question is open (#253), and the dialog no longer covers the message it asks about. It takes at most 70% of the terminal height (at least 12 rows) and scrolls within it. A second questionnaire opened while an inline one is showing falls back to the overlay. Set `renderMode` to `"overlay"` to keep the previous presentation.
+- The questionnaire now opens inline: in Pi's editor area below the transcript, where Pi's own prompts appear, instead of as a focused overlay over it. In fullscreen mode `PageUp`/`PageDown` and the mouse wheel keep scrolling the transcript while a question is open (#253), and the dialog no longer covers the message it asks about. It takes at most 70% of the terminal height (at least 12 rows) and scrolls within it. A second questionnaire opened while an inline one is showing, or a question arriving while another overlay such as `/btw` is open, opens as an overlay on top instead, so the question on screen is the one receiving keys.
 - When a dialog is taller than the space it has, the header and question stay pinned while the options scroll, so the question being answered never scrolls out of view.
 
-### Added
+### Fixed
 
-- `renderMode` setting: `"inline"` (default) or `"overlay"`.
+- A question that opened on top of `/btw` (or another overlay) is no longer hidden by `Ctrl+]`. Pi closes overlays from the top of its stack, so closing `/btw` removed the hidden question instead: `/btw` stayed on screen with `Esc` doing nothing, and the question never resolved, leaving the agent waiting. Collapse now shrinks such a question to its one-line row, keeping `/btw` readable behind it.
 
 ## [2.12.0] - 2026-09-30
 

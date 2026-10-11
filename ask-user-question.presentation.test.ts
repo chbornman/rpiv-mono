@@ -5,7 +5,7 @@ import { getKeybindings } from "@earendil-works/pi-tui";
 import { createMockCtx, createMockPi } from "@juicesharp/rpiv-test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAskUserQuestionTool } from "./ask-user-question.js";
-import { HOST_ALLOCATED_ROWS } from "./presentation.js";
+import { HOST_ALLOCATED_ROWS, resolvePresentation } from "./presentation.js";
 import type { QuestionnaireSessionComponent } from "./state/questionnaire-session.js";
 import type { QuestionnaireResult } from "./tool/types.js";
 import { HINT_PART_CANCEL } from "./view/dialog-builder.js";
@@ -52,10 +52,20 @@ const theme = {
 
 let root: string;
 
-function configure(renderMode: unknown): void {
+function writeConfig(config: object): void {
 	const path = join(root, "rpiv-ask-user-question", "config.json");
 	mkdirSync(dirname(path), { recursive: true });
-	writeFileSync(path, JSON.stringify({ renderMode }));
+	writeFileSync(path, JSON.stringify(config));
+}
+
+/** Occupy the inline slot as a concurrent questionnaire would, so the next one falls back to the overlay. */
+async function withInlineSlotHeld(body: () => Promise<void>): Promise<void> {
+	const holder = resolvePresentation();
+	try {
+		await body();
+	} finally {
+		holder.release?.();
+	}
 }
 
 function mount(factory: Factory, rows = 24, done: (r: QuestionnaireResult) => void = () => {}) {
@@ -83,9 +93,10 @@ afterEach(() => {
 	rmSync(root, { recursive: true, force: true });
 });
 
-describe("renderMode: inline (default)", () => {
-	it.each([undefined, "inline", "unknown", 7])("mounts in the editor slot for renderMode=%s", async (mode) => {
-		if (mode !== undefined) configure(mode);
+describe("inline presentation", () => {
+	it.each([{}, { renderMode: "overlay" }])("mounts in the editor slot (config %j)", async (config) => {
+		// `renderMode` shipped only in unreleased builds; a leftover value is ignored.
+		writeConfig(config);
 		const { run, ctx, onTerminalInput } = setup(async () => ({ answers: [], cancelled: true }));
 		await run(twoOptions);
 		expect(vi.mocked(ctx.ui.custom).mock.calls[0]?.[1]).toEqual({ overlay: false });
@@ -146,15 +157,15 @@ describe("renderMode: inline (default)", () => {
 		await run(fourDescribedOptions);
 	});
 
-	it("leaves the overlay at its natural height for the same questionnaire", async () => {
-		configure("overlay");
-		const { run } = setup(async (factory) => {
+	it("leaves the fallback overlay at its natural height for the same questionnaire", async () => {
+		const { run } = setup(async (factory, options) => {
+			expect(options?.overlay).toBe(true);
 			const lines = mount(factory, 24).render(100);
 			expect(lines.length).toBeGreaterThan(16);
 			expect(lines.length).toBeLessThanOrEqual(24);
 			return { answers: [], cancelled: true };
 		});
-		await run(fourDescribedOptions);
+		await withInlineSlotHeld(() => run(fourDescribedOptions).then(() => {}));
 	});
 
 	it("degrades a concurrent questionnaire to the overlay instead of replacing the mounted one", async () => {
@@ -182,6 +193,42 @@ describe("renderMode: inline (default)", () => {
 		await third;
 	});
 
+	it("stacks as an overlay instead when another overlay (e.g. /btw) is already on screen", async () => {
+		const calls: Array<CustomOptions | undefined> = [];
+		let overlayShowing = true;
+		const { run, onTerminalInput } = setup(
+			(factory, options) =>
+				new Promise((resolve) => {
+					calls.push(options);
+					const tui = {
+						requestRender() {},
+						terminal: { columns: 100, rows: 24 },
+						hasOverlay: () => overlayShowing,
+					};
+					const component = factory(tui, theme, getKeybindings(), resolve);
+					if (options?.overlay) {
+						expect(component.render(100).length).toBeGreaterThan(1);
+						component.handleInput(ENTER);
+					} else {
+						// A yielding factory has already resolved; otherwise settle the inline mount.
+						resolve({ answers: [], cancelled: true });
+					}
+				}),
+		);
+		const result = await run(twoOptions);
+		expect(calls.map((o) => o?.overlay)).toEqual([false, true]);
+		expect(calls[1]).toMatchObject({ overlayOptions: { anchor: "bottom-center" } });
+		// Stacked over another overlay, collapse must not hide (Pi pops the TOPMOST overlay on
+		// close), so no raw reopen listener is registered and collapse keeps a visible row.
+		expect(onTerminalInput).not.toHaveBeenCalled();
+		expect(result.details).toMatchObject({ cancelled: false, answers: [{ kind: "option", answer: "Inline" }] });
+
+		// The inline slot was handed back: with nothing on screen the next question goes inline.
+		overlayShowing = false;
+		await run(twoOptions);
+		expect(calls[2]?.overlay).toBe(false);
+	});
+
 	it("releases the slot when the questionnaire throws", async () => {
 		const modes: Array<boolean | undefined> = [];
 		let fail = true;
@@ -197,11 +244,10 @@ describe("renderMode: inline (default)", () => {
 	});
 });
 
-describe("renderMode: overlay", () => {
-	it.each(["overlay", "  OVERLAY "])("keeps the focused overlay for renderMode=%j", async (mode) => {
-		configure(mode);
+describe("overlay fallback", () => {
+	it("opens a focused overlay with the raw collapse listener while another questionnaire holds the slot", async () => {
 		const { run, ctx, onTerminalInput, removeListener } = setup(async () => ({ answers: [], cancelled: true }));
-		await run(twoOptions);
+		await withInlineSlotHeld(() => run(twoOptions).then(() => {}));
 		expect(vi.mocked(ctx.ui.custom).mock.calls[0]?.[1]).toMatchObject({
 			overlay: true,
 			overlayOptions: { anchor: "bottom-center", maxHeight: "100%" },

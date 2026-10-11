@@ -70,20 +70,44 @@ nothing but a global note still returns an answered result rather than a decline
 Inside the editor, `Shift+Enter` inserts a newline, while `Esc` and `Enter` close it; other
 keystrokes edit the buffer, so `n` types an `n`. Pasted line breaks are preserved.
 
+## Where the dialog appears
+
+The questionnaire opens in Pi's editor area, below the transcript — where Pi's own select
+and input prompts appear. The transcript keeps scrolling with `PageUp`/`PageDown` and the
+wheel while the dialog keeps its own keys. The dialog takes at most 70% of the terminal
+height (at least 12 rows); a taller questionnaire scrolls its options inside that space,
+keeping the header, the question, the focused option and the key hints visible.
+
+Wheel and trackpad scrolling reach the transcript only when the terminal reports them as
+mouse events. A terminal with mouse reporting turned off (Warp, for one) converts them
+into ↑/↓ key presses instead, which move between the dialog's options. `PageUp`/`PageDown`
+(`Fn+↑`/`Fn+↓` on a Mac keyboard) scroll the transcript either way.
+
+Two cases open the questionnaire as an overlay instead:
+
+- **A second question while one is open.** Only one questionnaire fits in the editor area,
+  so the second covers the bottom of the transcript as an overlay.
+- **A question arriving while another overlay, such as `/btw`, is open.** The question
+  stacks on top, so the question you see is the one your keys reach. `Ctrl+]` shrinks it to
+  its one-line row so `/btw` is readable behind it; the question keeps the keys, so `Esc`
+  cancels the question, and `/btw` closes after the question is answered or cancelled.
+
 ## Collapse mode
 
-`Ctrl+]` gets the dialog out of the way. By default the questionnaire sits in Pi's editor
-area, below the transcript, so the transcript already scrolls while it is open; collapse
-shrinks it to a single dim hint row for more room. The row keeps focus, so the same key
-brings the questionnaire back with your answers intact.
+`Ctrl+]` gets the dialog out of the way. In the editor area it shrinks the questionnaire
+to a single dim hint row for more room. The row keeps focus, so the same key brings the
+questionnaire back with your answers intact.
 
-With `renderMode: "overlay"` the dialog covers the bottom of the transcript instead.
-Collapse marks the overlay hidden in Pi's overlay stack, so the transcript it was covering
+When the questionnaire opened as an overlay for a second question, collapse marks the
+overlay hidden in Pi's overlay stack, so the transcript it was covering
 becomes readable and chat scrolling resumes. The first time you collapse, Pi notifies you
 with the key to press — that message names your configured key. Because Pi routes no
 input to a hidden overlay, the collapse key is additionally captured at the raw terminal
 level. It only acts when the questionnaire is hidden or focused, so a different overlay
-on top of it (for example `/btw`) keeps its keystrokes.
+on top of it (for example `/btw`) keeps its keystrokes. A question that opened on top of
+an overlay that was already showing (for example `/btw`) is never hidden this way: collapse
+shrinks it to the one-line row and it keeps focus, because Pi closes overlays from the top
+of the stack and would otherwise remove the hidden question when `/btw` closes.
 
 While collapsed, every keystroke other than cancel or expand is ignored, so you cannot
 mutate answers you cannot see.

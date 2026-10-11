@@ -5,13 +5,9 @@ import {
 	type AskUserQuestionConfig,
 	COLLAPSE_KEY_OFF,
 	DEFAULT_COLLAPSE_KEY,
-	DEFAULT_RENDER_MODE,
 	formatKeySpecForDisplay,
 	loadConfig,
-	RENDER_MODE_INLINE,
-	RENDER_MODE_OVERLAY,
 	resolveCollapseKey,
-	resolveRenderMode,
 } from "./config.js";
 
 describe("formatKeySpecForDisplay", () => {
@@ -119,24 +115,5 @@ describe("loadConfig", () => {
 		const c = loadConfig();
 		expect(c.collapseKey).toBe("alt+o");
 		expect(c.guidance?.promptSnippet).toBe("x");
-	});
-});
-
-describe("resolveRenderMode", () => {
-	it("defaults to inline when unset", () => {
-		expect(DEFAULT_RENDER_MODE).toBe(RENDER_MODE_INLINE);
-		expect(resolveRenderMode({})).toBe(RENDER_MODE_INLINE);
-	});
-
-	it("opts out to the overlay regardless of case and surrounding whitespace", () => {
-		expect(resolveRenderMode({ renderMode: "overlay" })).toBe(RENDER_MODE_OVERLAY);
-		expect(resolveRenderMode({ renderMode: "  Overlay " as never })).toBe(RENDER_MODE_OVERLAY);
-		expect(resolveRenderMode({ renderMode: "inline" })).toBe(RENDER_MODE_INLINE);
-	});
-
-	it("falls back to the inline default on unknown or non-string values", () => {
-		expect(resolveRenderMode({ renderMode: "bottom" as never })).toBe(RENDER_MODE_INLINE);
-		expect(resolveRenderMode({ renderMode: 1 as never })).toBe(RENDER_MODE_INLINE);
-		expect(resolveRenderMode({ renderMode: null as never })).toBe(RENDER_MODE_INLINE);
 	});
 });
