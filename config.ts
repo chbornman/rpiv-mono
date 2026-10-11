@@ -24,9 +24,10 @@ export interface AskUserQuestionConfig {
 	 */
 	collapseKey?: CollapseKeySpec;
 	/**
-	 * `"overlay"` (default) draws the dialog over the transcript as a focused overlay.
-	 * `"inline"` mounts it in Pi's editor slot below the transcript, so the transcript
-	 * keeps scrolling while a question is open (#253).
+	 * `"inline"` (default) mounts the dialog in Pi's editor slot below the transcript —
+	 * where Pi's own select/input/editor prompts mount — so the transcript keeps
+	 * scrolling while a question is open (#253). `"overlay"` draws it over the
+	 * transcript as a focused overlay, the previous presentation.
 	 */
 	renderMode?: RenderMode;
 }
@@ -80,10 +81,12 @@ export function resolveCollapseKey(config: Pick<AskUserQuestionConfig, "collapse
 	return isValidCollapseKeySpec(raw) ? raw : DEFAULT_COLLAPSE_KEY;
 }
 
-/** Case/whitespace-insensitive; anything other than `"inline"` (including non-strings) resolves to the overlay. */
+export const DEFAULT_RENDER_MODE: RenderMode = RENDER_MODE_INLINE;
+
+/** Case/whitespace-insensitive; only `"overlay"` opts out — anything else (including non-strings) resolves to the default. */
 export function resolveRenderMode(config: Pick<AskUserQuestionConfig, "renderMode">): RenderMode {
 	const raw = typeof config.renderMode === "string" ? config.renderMode.trim().toLowerCase() : undefined;
-	return raw === RENDER_MODE_INLINE ? RENDER_MODE_INLINE : RENDER_MODE_OVERLAY;
+	return raw === RENDER_MODE_OVERLAY ? RENDER_MODE_OVERLAY : DEFAULT_RENDER_MODE;
 }
 
 // The only compound-word names in SPECIAL_KEYS — first-letter capitalization

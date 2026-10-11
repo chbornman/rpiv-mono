@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { RENDER_MODE_INLINE, RENDER_MODE_OVERLAY } from "./config.js";
-import { INLINE_MIN_ROWS, inlineRowBudget, overlayRowBudget, resolvePresentation } from "./presentation.js";
+import {
+	fullRowBudget,
+	HOST_ALLOCATED_ROWS,
+	INLINE_MIN_ROWS,
+	inlineRowBudget,
+	resolvePresentation,
+	rowBudgetForHost,
+} from "./presentation.js";
 
 describe("row budgets", () => {
 	it("passes terminal rows through unchanged for the overlay", () => {
-		expect(overlayRowBudget(24)).toBe(24);
-		expect(overlayRowBudget(7)).toBe(7);
+		expect(fullRowBudget(24)).toBe(24);
+		expect(fullRowBudget(7)).toBe(7);
 	});
 
 	it("caps inline at a share of the terminal with a floor, never above the terminal", () => {
@@ -19,7 +26,7 @@ describe("row budgets", () => {
 describe("resolvePresentation", () => {
 	it("gives the overlay no slot to release", () => {
 		const p = resolvePresentation(RENDER_MODE_OVERLAY);
-		expect(p).toMatchObject({ overlay: true, rowBudget: overlayRowBudget });
+		expect(p).toMatchObject({ overlay: true, rowBudget: fullRowBudget });
 		expect(p.release).toBeUndefined();
 	});
 
@@ -27,7 +34,7 @@ describe("resolvePresentation", () => {
 		const first = resolvePresentation(RENDER_MODE_INLINE);
 		expect(first).toMatchObject({ overlay: false, rowBudget: inlineRowBudget });
 		const second = resolvePresentation(RENDER_MODE_INLINE);
-		expect(second).toMatchObject({ overlay: true, rowBudget: overlayRowBudget });
+		expect(second).toMatchObject({ overlay: true, rowBudget: fullRowBudget });
 		expect(second.release).toBeUndefined();
 
 		first.release?.();
@@ -36,5 +43,16 @@ describe("resolvePresentation", () => {
 		first.release?.();
 		expect(resolvePresentation(RENDER_MODE_INLINE).overlay).toBe(true);
 		third.release?.();
+	});
+});
+
+describe("rowBudgetForHost", () => {
+	it("keeps the presentation's budget for a plain terminal", () => {
+		expect(rowBudgetForHost({ rows: 24 }, inlineRowBudget)).toBe(inlineRowBudget);
+	});
+
+	it("uses every reported row when the host has already allocated them", () => {
+		const allocated = { rows: 19, [HOST_ALLOCATED_ROWS]: true };
+		expect(rowBudgetForHost(allocated, inlineRowBudget)).toBe(fullRowBudget);
 	});
 });

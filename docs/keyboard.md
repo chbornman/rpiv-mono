@@ -72,19 +72,18 @@ keystrokes edit the buffer, so `n` types an `n`. Pasted line breaks are preserve
 
 ## Collapse mode
 
-`Ctrl+]` gets the dialog out of the way: the overlay is marked hidden in Pi's overlay
-stack and shrinks to a single dim hint row, so the transcript it was covering becomes
-readable and chat scrolling resumes. Press the same key to bring the questionnaire back
-with your answers intact. The first time you collapse, Pi notifies you with the key to
-press — that message names your configured key.
+`Ctrl+]` gets the dialog out of the way. By default the questionnaire sits in Pi's editor
+area, below the transcript, so the transcript already scrolls while it is open; collapse
+shrinks it to a single dim hint row for more room. The row keeps focus, so the same key
+brings the questionnaire back with your answers intact.
 
-Because Pi routes no input to a hidden overlay, the collapse key is additionally captured
-at the raw terminal level. It only acts when the questionnaire is hidden or focused, so a
-different overlay on top of it (for example `/btw`) keeps its keystrokes.
-
-With `renderMode: "inline"` there is no overlay to hide: collapse shrinks the dialog to its
-one-row hint in the editor area, it keeps focus, and the same key expands it without the
-raw listener. Inline, the transcript scrolls while the dialog is expanded too.
+With `renderMode: "overlay"` the dialog covers the bottom of the transcript instead.
+Collapse marks the overlay hidden in Pi's overlay stack, so the transcript it was covering
+becomes readable and chat scrolling resumes. The first time you collapse, Pi notifies you
+with the key to press — that message names your configured key. Because Pi routes no
+input to a hidden overlay, the collapse key is additionally captured at the raw terminal
+level. It only acts when the questionnaire is hidden or focused, so a different overlay
+on top of it (for example `/btw`) keeps its keystrokes.
 
 While collapsed, every keystroke other than cancel or expand is ignored, so you cannot
 mutate answers you cannot see.

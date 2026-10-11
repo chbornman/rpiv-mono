@@ -5,6 +5,7 @@ import { getKeybindings } from "@earendil-works/pi-tui";
 import { createMockCtx, createMockPi } from "@juicesharp/rpiv-test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAskUserQuestionTool } from "./ask-user-question.js";
+import { HOST_ALLOCATED_ROWS } from "./presentation.js";
 import type { QuestionnaireSessionComponent } from "./state/questionnaire-session.js";
 import type { QuestionnaireResult } from "./tool/types.js";
 import { HINT_PART_CANCEL } from "./view/dialog-builder.js";
@@ -82,9 +83,16 @@ afterEach(() => {
 	rmSync(root, { recursive: true, force: true });
 });
 
-describe("renderMode: inline", () => {
-	it("mounts in the editor slot, collapses to a visible row without a raw listener, and still submits", async () => {
-		configure("inline");
+describe("renderMode: inline (default)", () => {
+	it.each([undefined, "inline", "unknown", 7])("mounts in the editor slot for renderMode=%s", async (mode) => {
+		if (mode !== undefined) configure(mode);
+		const { run, ctx, onTerminalInput } = setup(async () => ({ answers: [], cancelled: true }));
+		await run(twoOptions);
+		expect(vi.mocked(ctx.ui.custom).mock.calls[0]?.[1]).toEqual({ overlay: false });
+		expect(onTerminalInput).not.toHaveBeenCalled();
+	});
+
+	it("collapses to a visible row without a raw listener, and still submits", async () => {
 		const { run, ctx, onTerminalInput } = setup(async (factory, options) => {
 			expect(options).toEqual({ overlay: false });
 			let result: QuestionnaireResult | undefined;
@@ -107,7 +115,6 @@ describe("renderMode: inline", () => {
 	});
 
 	it("caps the dialog to the inline row budget and keeps the footer and focused option visible", async () => {
-		configure("inline");
 		const rows = 24;
 		const budget = 16; // 70% of 24 — pinned literally so a budget regression cannot move the goalposts
 		const { run } = setup(async (factory) => {
@@ -127,7 +134,20 @@ describe("renderMode: inline", () => {
 		await run(fourDescribedOptions);
 	});
 
+	it("uses a host's whole allocated band instead of capping it again", async () => {
+		// rpiv-pi's lane console reports its band as terminal.rows and marks it allocated.
+		const { run } = setup(async (factory) => {
+			const tui = { requestRender() {}, terminal: { columns: 100, rows: 19, [HOST_ALLOCATED_ROWS]: true } };
+			const lines = factory(tui, theme, getKeybindings(), () => {}).render(100);
+			expect(lines.length).toBe(19); // natural height 19; the 70% inline cap would be 13
+			expect(lines.some((line) => line.includes("Option 4"))).toBe(true);
+			return { answers: [], cancelled: true };
+		});
+		await run(fourDescribedOptions);
+	});
+
 	it("leaves the overlay at its natural height for the same questionnaire", async () => {
+		configure("overlay");
 		const { run } = setup(async (factory) => {
 			const lines = mount(factory, 24).render(100);
 			expect(lines.length).toBeGreaterThan(16);
@@ -138,7 +158,6 @@ describe("renderMode: inline", () => {
 	});
 
 	it("degrades a concurrent questionnaire to the overlay instead of replacing the mounted one", async () => {
-		configure("inline");
 		const modes: Array<boolean | undefined> = [];
 		const pending: Array<() => void> = [];
 		const { run } = setup(
@@ -164,7 +183,6 @@ describe("renderMode: inline", () => {
 	});
 
 	it("releases the slot when the questionnaire throws", async () => {
-		configure("inline");
 		const modes: Array<boolean | undefined> = [];
 		let fail = true;
 		const { run } = setup(async (_factory, options) => {
@@ -180,8 +198,8 @@ describe("renderMode: inline", () => {
 });
 
 describe("renderMode: overlay", () => {
-	it.each([undefined, "overlay", "unknown", 7])("keeps the focused overlay for renderMode=%s", async (mode) => {
-		if (mode !== undefined) configure(mode);
+	it.each(["overlay", "  OVERLAY "])("keeps the focused overlay for renderMode=%j", async (mode) => {
+		configure(mode);
 		const { run, ctx, onTerminalInput, removeListener } = setup(async () => ({ answers: [], cancelled: true }));
 		await run(twoOptions);
 		expect(vi.mocked(ctx.ui.custom).mock.calls[0]?.[1]).toMatchObject({

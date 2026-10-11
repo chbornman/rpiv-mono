@@ -58,7 +58,7 @@ type are likewise dropped back to their default without a warning.
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| `renderMode` | `"overlay"` draws over the transcript; `"inline"` mounts below it in Pi's editor area. | `"overlay"` |
+| `renderMode` | `"inline"` mounts below the transcript in Pi's editor area; `"overlay"` draws over the transcript. | `"inline"` |
 | `collapseKey` | Key that collapses and expands the dialog. | `"ctrl+]"` |
 | `guidance.description` | Full text of the tool description the model sees. Replaces the built-in default entirely — no merging. | built-in description |
 | `guidance.promptSnippet` | One-line snippet describing the tool in the system prompt. | built-in snippet |
@@ -66,16 +66,12 @@ type are likewise dropped back to their default without a warning.
 
 ### `renderMode`
 
-`"overlay"` (the default) opens the questionnaire as a focused overlay over the bottom of
-the transcript. In Pi's fullscreen mode a focused overlay receives the transcript's scroll
-input, so `PageUp` and the mouse wheel do nothing until you collapse it.
-
-`"inline"` mounts the questionnaire in Pi's editor area instead, below the transcript.
-The transcript keeps scrolling with `PageUp`/`PageDown` and the wheel while the dialog
+`"inline"` (the default) mounts the questionnaire in Pi's editor area, below the
+transcript — where Pi's own select and input prompts appear. The transcript keeps scrolling with `PageUp`/`PageDown` and the wheel while the dialog
 keeps its own keys. The dialog takes at most 70% of the terminal height (at least 12
 rows); a taller questionnaire scrolls its options inside that space, keeping the header,
-the question, the focused option and the key hints visible. Collapse shrinks it to one hint row that keeps focus, and the
-same key expands it again.
+the question, the focused option and the key hints visible. Collapse shrinks it to one
+hint row that keeps focus, and the same key expands it again.
 
 Wheel and trackpad scrolling reach the transcript only when the terminal reports them as
 mouse events. A terminal with mouse reporting turned off (Warp, for one) converts them
@@ -85,7 +81,12 @@ into ↑/↓ key presses instead, which move between the dialog's options. `Page
 Only one questionnaire can occupy the editor area. If the agent opens a second one while
 an inline questionnaire is still open, the second opens as an overlay.
 
-Values are trimmed and lowercased; anything other than `"inline"` keeps the overlay. The
+`"overlay"` restores the previous presentation: a focused overlay over the bottom of the
+transcript, up to the full terminal height. In Pi's fullscreen mode a focused overlay
+receives the transcript's scroll input, so `PageUp` and the mouse wheel do nothing until
+you collapse it.
+
+Values are trimmed and lowercased; anything other than `"overlay"` uses the inline default. The
 setting is read for each questionnaire, so edits apply to the next one without
 restarting Pi. RPC hosts use their native dialogs regardless of this setting.
 

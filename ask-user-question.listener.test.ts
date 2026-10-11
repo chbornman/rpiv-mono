@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createMockPi } from "@juicesharp/rpiv-test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAskUserQuestionTool } from "./ask-user-question.js";
 import type { AskUserQuestionConfig } from "./config.js";
 
@@ -114,10 +114,18 @@ const home = process.env.HOME ?? "";
 const configDir = join(home, ".config", "rpiv-ask-user-question");
 const configPath = join(configDir, "config.json");
 
-function writeCollapseKeyConfig(collapseKey: string): void {
+// The raw listener exists only for the overlay presentation; inline (the default) never
+// registers it, so every case here pins `renderMode: "overlay"`.
+function writeConfig(config: AskUserQuestionConfig = {}): void {
 	mkdirSync(configDir, { recursive: true });
-	writeFileSync(configPath, JSON.stringify({ collapseKey } satisfies AskUserQuestionConfig));
+	writeFileSync(configPath, JSON.stringify({ renderMode: "overlay", ...config } satisfies AskUserQuestionConfig));
 }
+
+function writeCollapseKeyConfig(collapseKey: string): void {
+	writeConfig({ collapseKey });
+}
+
+beforeEach(() => writeConfig());
 
 afterEach(() => {
 	if (existsSync(configPath)) rmSync(configPath);

@@ -7,9 +7,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The questionnaire now opens inline by default: in Pi's editor area below the transcript, where Pi's own prompts appear, instead of as a focused overlay over it. In fullscreen mode `PageUp`/`PageDown` and the mouse wheel keep scrolling the transcript while a question is open (#253), and the dialog no longer covers the message it asks about. It takes at most 70% of the terminal height (at least 12 rows) and scrolls within it. A second questionnaire opened while an inline one is showing falls back to the overlay. Set `renderMode` to `"overlay"` to keep the previous presentation.
+- When a dialog is taller than the space it has, the header and question stay pinned while the options scroll, so the question being answered never scrolls out of view.
+
 ### Added
 
-- `renderMode: "inline"` mounts the questionnaire in Pi's editor area below the transcript, so in fullscreen mode `PageUp`/`PageDown` and the mouse wheel keep scrolling the transcript while a question is open (#253). The dialog takes at most 70% of the terminal height (at least 12 rows) and scrolls within it; the header and question stay pinned while the options scroll. A second questionnaire opened while an inline one is showing falls back to the overlay. The default overlay is unchanged.
+- `renderMode` setting: `"inline"` (default) or `"overlay"`.
 
 ## [2.12.0] - 2026-09-30
 

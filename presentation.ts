@@ -13,7 +13,22 @@ export const INLINE_MIN_ROWS = 12;
 /** Maps the terminal's row count to the rows the dialog may render. */
 export type RowBudget = (terminalRows: number) => number;
 
-export const overlayRowBudget: RowBudget = (terminalRows) => terminalRows;
+/** The whole of `terminal.rows`: the overlay, and any host that already allocates the dialog's rows. */
+export const fullRowBudget: RowBudget = (terminalRows) => terminalRows;
+
+/**
+ * Marker a host sets on `tui.terminal` when it reports the rows it has allocated to the
+ * questionnaire as `terminal.rows` (rpiv-pi's lane console `cappedTui`). The inline cap
+ * exists to leave the transcript room in Pi's editor slot; applying it to an allocation
+ * would shrink an already-sized band a second time. A registry symbol, so hosts need no
+ * import from this package.
+ */
+export const HOST_ALLOCATED_ROWS = Symbol.for("rpiv-ask-user-question:host-allocated-rows");
+
+/** The presentation's budget, unless the host has already allocated the rows itself. */
+export function rowBudgetForHost(terminal: object, budget: RowBudget): RowBudget {
+	return (terminal as Record<symbol, unknown>)[HOST_ALLOCATED_ROWS] === true ? fullRowBudget : budget;
+}
 
 export const inlineRowBudget: RowBudget = (terminalRows) =>
 	Math.min(terminalRows, Math.max(INLINE_MIN_ROWS, Math.floor(terminalRows * INLINE_ROW_RATIO)));
@@ -48,5 +63,5 @@ export function resolvePresentation(mode: RenderMode): Presentation {
 		const release = claimInlineSlot();
 		if (release) return { overlay: false, rowBudget: inlineRowBudget, release };
 	}
-	return { overlay: true, rowBudget: overlayRowBudget };
+	return { overlay: true, rowBudget: fullRowBudget };
 }

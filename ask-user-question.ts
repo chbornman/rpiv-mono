@@ -16,7 +16,7 @@ import {
 } from "./events.js";
 // Static import is fine — rpc-fallback pulls only types + the i18n bridge,
 // none of the ~560ms TUI render graph that QuestionnaireSession lazy-loads.
-import { type Presentation, resolvePresentation } from "./presentation.js";
+import { type Presentation, resolvePresentation, rowBudgetForHost } from "./presentation.js";
 import { type DialogUI, hasDialogUI, runRpcQuestionnaire } from "./rpc-fallback.js";
 import { displayLabel, t } from "./state/i18n-bridge.js";
 import { sentinelsToAppend } from "./state/row-intent.js";
@@ -229,7 +229,7 @@ function makeSessionFactory(config: {
 			},
 			collapseKey,
 			canReopenWhileHidden,
-			rowBudget,
+			rowBudget: rowBudgetForHost(tui.terminal, rowBudget),
 		});
 		sessionRef.current = session;
 		return session.component;
@@ -358,8 +358,8 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 			// sentinel value `"off"` to disable the shortcut entirely.
 			const config = loadConfig();
 			const collapseKey = resolveCollapseKey(config);
-			// Overlay (default) or Pi's editor slot (`renderMode: "inline"`, #253). An inline
-			// request degrades to the overlay while another questionnaire holds the slot.
+			// Pi's editor slot (default, #253) or a focused overlay (`renderMode: "overlay"`).
+			// An inline request degrades to the overlay while another questionnaire holds the slot.
 			const presentation = resolvePresentation(resolveRenderMode(config));
 
 			// Capture the overlay handle so the session can call `setHidden()` when the
