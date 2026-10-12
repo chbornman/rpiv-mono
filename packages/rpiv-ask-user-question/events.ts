@@ -19,7 +19,7 @@
  * Aligns with Pi's `"my-extension:status"` example and UniPi's `unipi:*`.
  */
 
-import type { QuestionnaireResult } from "./tool/types.js";
+import type { QuestionAnswer, QuestionnaireResult } from "./tool/types.js";
 
 export const ASK_USER_PROMPT_EVENT = "rpiv:ask-user:prompt" as const;
 
@@ -98,11 +98,30 @@ export interface AskUserPromptOption {
 export const ASK_USER_ANSWER_EVENT = "rpiv:ask-user:answer" as const;
 
 /**
- * The subset of the package's own `QuestionnaireResult` a client may submit:
- * the answer list, the cancel flag, and an optional global note. The
- * envelope-computed fields (`unanswered`, `error`) are outputs, not inputs.
+ * One submitted answer. Derived from the package's own `QuestionAnswer` so the
+ * two cannot drift, with the two fields the channel re-reads from the
+ * questionnaire's own params made optional and non-authoritative:
+ *
+ * - `question` is taken from the params, never from the submission, so a client
+ *   cannot put words in the model's mouth;
+ * - `preview` is taken from the matched option for the same reason;
+ * - `answer` may be omitted for a `multi` commit or an empty custom answer, the
+ *   way the terminal's own empty commits are.
  */
-export type AskUserAnswerResult = Pick<QuestionnaireResult, "answers" | "cancelled" | "globalNote">;
+export type AskUserAnswerEntry = Omit<QuestionAnswer, "question" | "preview" | "answer"> & {
+	answer?: string | null;
+	question?: string;
+	preview?: string;
+};
+
+/**
+ * The subset of the package's own `QuestionnaireResult` a client may submit: the
+ * answer list, the cancel flag, and an optional global note. The envelope-computed
+ * fields (`unanswered`, `error`) are outputs, not inputs.
+ */
+export type AskUserAnswerResult = Pick<QuestionnaireResult, "cancelled" | "globalNote"> & {
+	answers: AskUserAnswerEntry[];
+};
 
 export interface AskUserAnswerEventPayload {
 	/** The answer to deliver, in the same shape the terminal path produces. */
