@@ -39,9 +39,18 @@ try {
 	// SDK absent — extension still loads with English-only UI.
 }
 
+// Programmatic answer channel. The event pair above is the wire contract; this
+// is the same delivery for a consumer that shares the process and would rather
+// call a function than emit on the bus.
+export { submitAskUserAnswer } from "./ask-answer.js";
 export {
+	ASK_USER_ANSWER_EVENT,
+	ASK_USER_ANSWER_RESULT_EVENT,
 	ASK_USER_BLOCKED_EVENT,
 	ASK_USER_PROMPT_EVENT,
+	type AskUserAnswerEventPayload,
+	type AskUserAnswerResult,
+	type AskUserAnswerResultEventPayload,
 	type AskUserBlockedEventPayload,
 	type AskUserPromptEventPayload,
 	type AskUserPromptOption,

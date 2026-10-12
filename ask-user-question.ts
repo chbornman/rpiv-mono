@@ -1,6 +1,13 @@
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { isKeyRelease, isKeyRepeat, matchesKey, type OverlayHandle, type TUI } from "@earendil-works/pi-tui";
 import {
+	type ActiveAsk,
+	clearActiveAsk,
+	installAskAnswerChannel,
+	newPromptId,
+	registerActiveAsk,
+} from "./ask-answer.js";
+import {
 	COLLAPSE_KEY_OFF,
 	formatKeySpecForDisplay,
 	loadConfig,
@@ -41,7 +48,7 @@ import {
 import { validateQuestionnaire } from "./tool/validate-questionnaire.js";
 import type { WrappingSelectItem } from "./view/components/wrapping-select.js";
 
-function emitAskUserPromptEvent(pi: ExtensionAPI, params: QuestionParams): void {
+function emitAskUserPromptEvent(pi: ExtensionAPI, params: QuestionParams, promptId?: string): void {
 	const payload: AskUserPromptEventPayload = {
 		questions: params.questions.map((q) => ({
 			question: q.question,
@@ -53,12 +60,13 @@ function emitAskUserPromptEvent(pi: ExtensionAPI, params: QuestionParams): void 
 				hasPreview: typeof o.preview === "string" && o.preview.length > 0,
 			})),
 		})),
+		...(promptId !== undefined ? { promptId } : {}),
 	};
 	pi.events.emit(ASK_USER_PROMPT_EVENT, payload);
 }
 
-function emitAskUserBlockedEvent(pi: ExtensionAPI, active: boolean): void {
-	const payload: AskUserBlockedEventPayload = { active };
+function emitAskUserBlockedEvent(pi: ExtensionAPI, active: boolean, promptId?: string): void {
+	const payload: AskUserBlockedEventPayload = { active, ...(promptId !== undefined ? { promptId } : {}) };
 	pi.events.emit(ASK_USER_BLOCKED_EVENT, payload);
 }
 
@@ -67,7 +75,15 @@ function rejectWithoutUi() {
 	return buildToolResult(ERROR_NO_UI, { answers: [], cancelled: true, error: "no_ui" });
 }
 
-/** Sequential native-dialog walker for RPC hosts; brackets it with the blocked-event pair + terminal bell. */
+/**
+ * Sequential native-dialog walker for RPC hosts; brackets it with the blocked-event
+ * pair + terminal bell.
+ *
+ * No `promptId` is emitted on this path, and nothing registers with the answer
+ * channel (`ask-answer.ts`): the walker drives the host's own native dialogs, so
+ * there is no questionnaire here that an inbound answer could resolve. A bridge
+ * reads the missing `promptId` as "render this read-only".
+ */
 async function runRpcPath(pi: ExtensionAPI, ui: DialogUI, typed: QuestionParams) {
 	emitAskUserBlockedEvent(pi, true);
 	try {
@@ -200,18 +216,41 @@ function makeSessionFactory(config: {
 	canReopenWhileHidden: boolean;
 	presentation: Presentation;
 	sessionRef: SessionRef;
+	/** Identity of this questionnaire on the inbound answer channel (`ask-answer.ts`). */
+	promptId: string;
+	/** Mount-owned slot for the registration pushed as the factory's first act. */
+	askSlot: { current: ActiveAsk | undefined };
 	Session: SessionModule["QuestionnaireSession"];
 }) {
-	const { ctx, typed, itemsByTab, collapseKey, canReopenWhileHidden, presentation, sessionRef, Session } = config;
+	const {
+		ctx,
+		typed,
+		itemsByTab,
+		collapseKey,
+		canReopenWhileHidden,
+		presentation,
+		sessionRef,
+		promptId,
+		askSlot,
+		Session,
+	} = config;
 	return (
 		tui: TUI,
 		theme: Theme,
 		keybindings: import("./state/questionnaire-session.js").QuestionnaireSessionConfig["keybindings"],
 		done: (result: QuestionnaireResult) => void,
 	): import("./state/questionnaire-session.js").QuestionnaireSessionComponent => {
+		// First act, before any early return: this is the earliest point `done`
+		// exists, and until the component returns pi's machinery holds the only
+		// reference to it, so it is when an outside answer becomes reachable.
+		askSlot.current = registerActiveAsk(typed, promptId, done);
 		// The factory runs at mount time — the first point the TUI is reachable — so this is
 		// where an inline mount notices an overlay already on screen and gives the slot up.
 		if (!presentation.overlay && mustYieldInlineSlot(tui)) {
+			// Cleared before `done`: an answer landing in the microtask before the
+			// remount would otherwise be acked against an already-settled promise.
+			clearActiveAsk(askSlot.current);
+			askSlot.current = undefined;
 			done(YIELD_TO_OVERLAY);
 			return INERT_COMPONENT;
 		}
@@ -268,10 +307,14 @@ async function mountQuestionnaire(config: {
 	itemsByTab: WrappingSelectItem[][];
 	collapseKey: string;
 	presentation: Presentation;
+	promptId: string;
 	Session: SessionModule["QuestionnaireSession"];
 }): Promise<QuestionnaireResult | undefined> {
 	const { ctx, collapseKey, presentation } = config;
 	const sessionRef: SessionRef = { current: null };
+	// Mount-owned: a factory that never ran leaves it undefined, and a mount that
+	// outlives an overlapping one never drops the other's registration.
+	const askSlot: { current: ActiveAsk | undefined } = { current: undefined };
 	const overlayHandleRef: OverlayHandleRef = { current: undefined };
 	const removeOverlayInputListener = presentation.hideOnCollapse
 		? registerCollapseKeyListener(ctx, collapseKey, sessionRef, overlayHandleRef)
@@ -282,7 +325,7 @@ async function mountQuestionnaire(config: {
 	const canReopenWhileHidden = removeOverlayInputListener !== undefined;
 	try {
 		return await ctx.ui.custom<QuestionnaireResult>(
-			makeSessionFactory({ ...config, canReopenWhileHidden, sessionRef }),
+			makeSessionFactory({ ...config, canReopenWhileHidden, sessionRef, askSlot }),
 			presentation.overlay
 				? {
 						overlay: true,
@@ -300,6 +343,7 @@ async function mountQuestionnaire(config: {
 				: { overlay: false },
 		);
 	} finally {
+		clearActiveAsk(askSlot.current);
 		removeOverlayInputListener?.();
 	}
 }
@@ -373,6 +417,10 @@ Use the optional \`preview\` field on options when presenting concrete artifacts
 Preview content is rendered as markdown in a monospace box. Multi-line text with newlines is supported. When any option has a preview, the UI switches to a side-by-side layout with a vertical option list on the left and preview on the right. Do not use previews for simple preference questions where labels and descriptions suffice. Note: previews are only supported for single-select questions (not multiSelect).`;
 
 export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
+	// Inbound half of the prompt event: `rpiv:ask-user:answer` resolves a waiting
+	// questionnaire without synthesizing keystrokes. Registered once per tool
+	// registration, i.e. once per process, exactly like the tool itself.
+	installAskAnswerChannel(pi.events);
 	const guidance = validateGuidanceFields(loadConfig().guidance);
 	pi.registerTool({
 		name: ASK_USER_QUESTION_TOOL_NAME,
@@ -400,16 +448,25 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 				});
 			}
 
-			// Emit event for external listeners (e.g., notification plugins)
-			emitAskUserPromptEvent(pi, typed);
-
+			// One opaque identity per questionnaire, minted before the first event so
+			// `rpiv:ask-user:prompt` and the `blocked` bracket around this mount refer to
+			// the same ask (they interleave when Pi runs tool calls in parallel). It is
+			// also the handle an outside answer targets through `ask-answer.ts`.
+			const promptId = newPromptId();
 			// RPC hosts (VSCode pendant, ACP clients like Zed/Paseo — issue #78):
 			// ui.custom() cannot render there, but the select/input dialog
 			// sub-protocol works. Hosts that advertise ctx.mode (pi ≥0.79) route to
 			// the sequential dialog walker up front, skipping the TUI render-graph
 			// import entirely; RPC builds that predate ctx.mode are caught by the
 			// custom()-resolved-undefined backstop below. See ./rpc-fallback.ts.
-			if ((ctx as { mode?: string }).mode === "rpc" && hasDialogUI(ctx.ui)) {
+			//
+			// The walker drives the host's own dialogs, registers no answer target, and
+			// ships no promptId, so a bridge reading the prompt event sees a
+			// questionnaire it cannot answer and renders it read-only.
+			const rpcHost = (ctx as { mode?: string }).mode === "rpc" && hasDialogUI(ctx.ui);
+			// Emit event for external listeners (e.g., notification plugins, remote bridges).
+			emitAskUserPromptEvent(pi, typed, rpcHost ? undefined : promptId);
+			if (rpcHost) {
 				return runRpcPath(pi, ctx.ui, typed);
 			}
 
@@ -431,9 +488,17 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 			// or stacked when another overlay is already on screen (see below).
 			let presentation = resolvePresentation();
 			const mount = (p: Presentation) =>
-				mountQuestionnaire({ ctx, typed, itemsByTab, collapseKey, presentation: p, Session: QuestionnaireSession });
+				mountQuestionnaire({
+					ctx,
+					typed,
+					itemsByTab,
+					collapseKey,
+					presentation: p,
+					promptId,
+					Session: QuestionnaireSession,
+				});
 
-			emitAskUserBlockedEvent(pi, true);
+			emitAskUserBlockedEvent(pi, true, promptId);
 			try {
 				emitTerminalAttention();
 				let result = await mount(presentation);
@@ -451,7 +516,7 @@ export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
 				return buildQuestionnaireResponse(result, typed);
 			} finally {
 				presentation.release?.();
-				emitAskUserBlockedEvent(pi, false);
+				emitAskUserBlockedEvent(pi, false, promptId);
 			}
 		},
 	});

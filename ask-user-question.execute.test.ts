@@ -99,8 +99,16 @@ describe("ask_user_question.execute — terminal attention", () => {
 
 			expect(stdout.stdoutWrite).toHaveBeenCalledTimes(1);
 			expect(stdout.stdoutWrite).toHaveBeenCalledWith(BEL);
-			expect(mockEmit).toHaveBeenNthCalledWith(2, "rpiv:ask-user:blocked", { active: true });
-			expect(mockEmit).toHaveBeenNthCalledWith(3, "rpiv:ask-user:blocked", { active: false });
+			expect(mockEmit).toHaveBeenNthCalledWith(
+				2,
+				"rpiv:ask-user:blocked",
+				expect.objectContaining({ active: true }),
+			);
+			expect(mockEmit).toHaveBeenNthCalledWith(
+				3,
+				"rpiv:ask-user:blocked",
+				expect.objectContaining({ active: false }),
+			);
 			expect(mockEmit.mock.invocationCallOrder[1]).toBeLessThan(stdout.stdoutWrite.mock.invocationCallOrder[0]);
 			expect(stdout.stdoutWrite.mock.invocationCallOrder[0]).toBeLessThan(custom.mock.invocationCallOrder[0]);
 		} finally {
@@ -169,8 +177,16 @@ describe("ask_user_question.execute — terminal attention", () => {
 
 			expect(result?.details).toMatchObject({ cancelled: false });
 			expect(stdout.stdoutWrite).toHaveBeenCalledWith(BEL);
-			expect(mockEmit).toHaveBeenNthCalledWith(2, "rpiv:ask-user:blocked", { active: true });
-			expect(mockEmit).toHaveBeenNthCalledWith(3, "rpiv:ask-user:blocked", { active: false });
+			expect(mockEmit).toHaveBeenNthCalledWith(
+				2,
+				"rpiv:ask-user:blocked",
+				expect.objectContaining({ active: true }),
+			);
+			expect(mockEmit).toHaveBeenNthCalledWith(
+				3,
+				"rpiv:ask-user:blocked",
+				expect.objectContaining({ active: false }),
+			);
 		} finally {
 			stdout.restore();
 		}
@@ -397,10 +413,12 @@ describe("ask_user_question.execute — event emission", () => {
 					],
 				},
 			],
+			// Every live questionnaire carries one; the shape is an opaque UUID.
+			promptId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
 		});
 
-		expect(mockEmit).toHaveBeenNthCalledWith(2, "rpiv:ask-user:blocked", { active: true });
-		expect(mockEmit).toHaveBeenNthCalledWith(3, "rpiv:ask-user:blocked", { active: false });
+		expect(mockEmit).toHaveBeenNthCalledWith(2, "rpiv:ask-user:blocked", expect.objectContaining({ active: true }));
+		expect(mockEmit).toHaveBeenNthCalledWith(3, "rpiv:ask-user:blocked", expect.objectContaining({ active: false }));
 
 		// Both start events are emitted before the dialog; the clear follows it.
 		expect(mockEmit.mock.invocationCallOrder[0]).toBeLessThan(custom.mock.invocationCallOrder[0]);
@@ -437,12 +455,17 @@ describe("ask_user_question.execute — event emission", () => {
 			tool.execute?.("tc", validParams() as never, undefined as never, undefined as never, rejected as never),
 		).rejects.toThrow("UI failed");
 
-		expect(mockEmit.mock.calls.filter(([name]) => name === "rpiv:ask-user:blocked")).toEqual([
-			["rpiv:ask-user:blocked", { active: true }],
-			["rpiv:ask-user:blocked", { active: false }],
-			["rpiv:ask-user:blocked", { active: true }],
-			["rpiv:ask-user:blocked", { active: false }],
-		]);
+		// Each execute brackets itself with one true/false pair. Both halves of a
+		// pair carry the SAME promptId and the two executes differ, which is what
+		// keeps interleaving brackets attributable to one questionnaire.
+		const bracket = mockEmit.mock.calls
+			.filter(([name]) => name === "rpiv:ask-user:blocked")
+			.map(([, payload]) => payload as { active: boolean; promptId: string });
+		expect(bracket.map(({ active }) => active)).toEqual([true, false, true, false]);
+		expect(bracket[0]!.promptId).toMatch(/^[0-9a-f-]{36}$/);
+		expect(bracket[0]!.promptId).toBe(bracket[1]!.promptId);
+		expect(bracket[2]!.promptId).toBe(bracket[3]!.promptId);
+		expect(bracket[0]!.promptId).not.toBe(bracket[2]!.promptId);
 	});
 
 	it("does NOT emit event when UI is unavailable", async () => {
@@ -498,7 +521,11 @@ describe("ask_user_question.execute — event emission", () => {
 		await tool.execute?.("tc", params as never, undefined as never, undefined as never, ctx as never);
 
 		expect(captured.eventsEmitted.has("rpiv:ask-user:prompt")).toBe(true);
-		const payload = captured.eventsEmitted.get("rpiv:ask-user:prompt")![0] as Record<string, unknown>;
+		const { promptId, ...payload } = captured.eventsEmitted.get("rpiv:ask-user:prompt")![0] as Record<
+			string,
+			unknown
+		>;
+		expect(promptId).toEqual(expect.any(String));
 		expect(payload).toEqual({
 			questions: [
 				{
