@@ -161,6 +161,11 @@ function describeValue(value: unknown): string {
 	return typeof value;
 }
 
+/** An index is worth quoting by value (`12`, `-1`, `1.5`); anything else by type. */
+function describeIndex(value: unknown): string {
+	return typeof value === "number" ? String(value) : describeValue(value);
+}
+
 /**
  * Resolve the entry an answer targets: the one carrying `promptId`, or the
  * newest when no id was supplied. The newest is what the user sees on top, so an
@@ -202,7 +207,7 @@ function buildAnswer(
 		questionIndex >= params.questions.length
 	) {
 		return {
-			reason: `answer ${position}: questionIndex ${describeValue(questionIndex)} is out of range (0..${params.questions.length - 1})`,
+			reason: `answer ${position}: questionIndex ${describeIndex(questionIndex)} is out of range (0..${params.questions.length - 1})`,
 		};
 	}
 	const question = params.questions[questionIndex]!;
