@@ -111,6 +111,17 @@ describe("ask-answer — the active-ask stack", () => {
 		expect(activeAskCount()).toBe(0);
 	});
 
+	it("describes a host that threw something that is not an Error", () => {
+		registerActiveAsk(PARAMS, "id-boom", () => {
+			throw "editor busy";
+		});
+		expect(deliverAskAnswer({ answers: [optionAnswer(0, "React")], cancelled: false })).toEqual({
+			ok: false,
+			promptId: "id-boom",
+			reason: "the questionnaire could not accept the answer: editor busy",
+		});
+	});
+
 	it("mints a distinct opaque promptId per call", () => {
 		const ids = new Set(Array.from({ length: 20 }, () => newPromptId()));
 		expect(ids.size).toBe(20);
@@ -225,8 +236,16 @@ describe("ask-answer — validation against the registered params", () => {
 		);
 		rejectWith({ answers: [{ questionIndex: 0, kind: "custom", answer: {} }], cancelled: false }, "must be a string");
 		rejectWith(
+			{ answers: [{ questionIndex: [0], kind: "option", answer: "React" }], cancelled: false },
+			"questionIndex an array is out of range",
+		);
+		rejectWith(
 			{ answers: [{ questionIndex: 1, kind: "multi", selected: "Auth" }], cancelled: false },
-			"must be an array",
+			'selected must be an array of option labels, got "Auth"',
+		);
+		rejectWith(
+			{ answers: [{ questionIndex: 1, kind: "multi", selected: [["Auth"]] }], cancelled: false },
+			"an array is not one of its options (Auth, Tests)",
 		);
 		rejectWith(
 			{ answers: [optionAnswer(0, "React")], cancelled: false, globalNote: 5 },
