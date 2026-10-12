@@ -35,6 +35,11 @@ const ADVISOR_SYMBOL = Symbol.for("rpiv-advisor");
 const BTW_SYMBOL = Symbol.for("rpiv-btw");
 const I18N_SYMBOL = Symbol.for("rpiv-i18n");
 const VOICE_SYMBOL = Symbol.for("rpiv-voice");
+// rpiv-ask-user-question's active-ask stack (its `ask-answer.ts` answer channel).
+// Deleted as a key rather than through `__resetActiveAsks()`: the module reads the
+// slot on every access and never memoizes it, so dropping the key resets it
+// without pulling the package's render graph into every worker's warm-up.
+const ASK_ACTIVE_ASKS_SYMBOL = Symbol.for("@juicesharp/rpiv-ask-user-question:activeAsks");
 
 // Package modules are imported dynamically inside beforeEach (NOT statically at
 // the top of this file) by deliberate design — DO NOT "optimize" by hoisting.
@@ -136,6 +141,7 @@ beforeEach(async () => {
 	delete (globalThis as Record<symbol, unknown>)[BTW_SYMBOL];
 	delete (globalThis as Record<symbol, unknown>)[I18N_SYMBOL];
 	delete (globalThis as Record<symbol, unknown>)[VOICE_SYMBOL];
+	delete (globalThis as Record<symbol, unknown>)[ASK_ACTIVE_ASKS_SYMBOL];
 
 	const piAgentSettings = join(process.env.HOME!, ".pi", "agent", "settings.json");
 	const xdgPiAgentDir = join(process.env.HOME!, ".config", "pi", "agent");

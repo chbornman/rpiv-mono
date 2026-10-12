@@ -58,7 +58,14 @@ describe("ask_user_question — bare CR in model-supplied text (#192)", () => {
 
 		await tool.execute?.("tc", CR_PARAMS as never, undefined as never, undefined as never, ctx as never);
 
-		expect(captured.eventsEmitted.get("rpiv:ask-user:prompt")![0]).toEqual({
+		// Exact-match the payload so a normalization miss anywhere is visible; the
+		// per-ask promptId is peeled off rather than tolerated.
+		const { promptId, ...payload } = captured.eventsEmitted.get("rpiv:ask-user:prompt")![0] as Record<
+			string,
+			unknown
+		>;
+		expect(promptId).toEqual(expect.any(String));
+		expect(payload).toEqual({
 			questions: [
 				{
 					question: "Which option is best?",
