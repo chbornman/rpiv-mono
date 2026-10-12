@@ -1,5 +1,5 @@
 /**
- * ask-answer — the inbound answer channel for `ask_user_question`.
+ * ask-answer: the inbound answer channel for `ask_user_question`.
  *
  * The questionnaire is drawn by `ctx.ui.custom`, and the `done` callback that
  * resolves it is trapped inside the factory closure (`ask-user-question.ts`).
