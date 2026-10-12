@@ -109,22 +109,108 @@ in `details.globalNote`.
 
 ## Event contract
 
-The package publishes one event on Pi's event bus, emitted after validation passes and
-before the dialog is shown. Import it from the `/events` subpath:
+The package publishes two events on Pi's event bus and listens for one. Import the
+definitions from the `/events` subpath:
 
 ```ts
-import { ASK_USER_PROMPT_EVENT, type AskUserPromptEventPayload } from "@juicesharp/rpiv-ask-user-question/events";
+import {
+  ASK_USER_PROMPT_EVENT,
+  ASK_USER_BLOCKED_EVENT,
+  ASK_USER_ANSWER_EVENT,
+  ASK_USER_ANSWER_RESULT_EVENT,
+  type AskUserPromptEventPayload,
+  type AskUserAnswerEventPayload,
+} from "@juicesharp/rpiv-ask-user-question/events";
 
 pi.events.on(ASK_USER_PROMPT_EVENT, (payload: AskUserPromptEventPayload) => {
   // payload.questions[].{ question, header, multiSelect, options[] }
   // payload.questions[].options[].{ label, description, hasPreview }
+  // payload.promptId (present on the terminal path only)
 });
 ```
 
-The channel name is `rpiv:ask-user:prompt`. Preview *content* is deliberately not shipped
-in the payload — only `hasPreview: boolean` — so listeners forwarding the event across a
-process or network boundary stay cheap.
+The channel names are `rpiv:ask-user:prompt` and `rpiv:ask-user:blocked`. Preview *content*
+is deliberately not shipped in the prompt payload, only `hasPreview: boolean`, so listeners
+forwarding the event across a process or network boundary stay cheap.
+
+`rpiv:ask-user:blocked` brackets the wait: `{ active: true }` immediately before the dialog
+opens and `{ active: false }` after it closes, so a listener can suppress its own prompts
+while the user is busy answering. Both halves carry the same `promptId`.
+
+### Questionnaire identity
+
+`promptId` is an opaque UUID minted per tool call. It identifies one questionnaire across
+the prompt event, both halves of its blocked bracket, and any answer you send back. It is
+append-only and optional, and it is absent on the RPC dialog path (see below).
+
+Pi runs tool calls in parallel, so two questionnaires can be open at once and their brackets
+interleave. Match them by `promptId` rather than by "the last event I saw".
+
+### Answering from outside the terminal
+
+`rpiv:ask-user:answer` resolves a waiting questionnaire without synthesizing keystrokes:
+
+```ts
+pi.events.emit(ASK_USER_ANSWER_EVENT, {
+  promptId, // optional: which questionnaire. Omit for the newest one.
+  requestId: "msg-42", // optional: echoed back on the ack
+  result: {
+    answers: [{ questionIndex: 0, kind: "option", answer: "React" }],
+    cancelled: false,
+    globalNote: "shipping Friday", // optional
+  },
+} satisfies AskUserAnswerEventPayload);
+```
+
+Every attempt is answered on `rpiv:ask-user:answer-result` with
+`{ ok, promptId?, reason?, requestId? }`, so a bridge never has to wonder whether its
+answer landed. `promptId` names the questionnaire the verdict applies to, including the one
+an untargeted answer chose.
+
+The same delivery is exported as a function for a consumer that shares the process:
+`submitAskUserAnswer(result, promptId?)` from the package root returns the verdict as a
+boolean and has no side effects when it returns `false`.
+
+**Stack semantics.** The live questionnaires form a stack, one entry per open dialog. An
+answer with no `promptId` goes to the newest entry, which is the question the user sees on
+top; an answer with a `promptId` goes to that entry wherever it sits. Each entry is removed
+by the mount that created it, matched by identity, so an overlapping teardown can only ever
+drop its own registration and the entry underneath becomes the target again. An entry is
+also removed the moment it is answered, which makes a duplicate `promptId` a reported miss
+rather than a second answer.
+
+**Validation.** Every answer is checked against the params the targeted questionnaire
+opened with, and rebuilt from them:
+
+- `result` must be an object with a boolean `cancelled` and an `answers` array, and an
+  answered result must carry at least one answer or a non-empty `globalNote`.
+- Every entry must be an object whose `kind` is `option`, `custom`, or `multi`, whose
+  `questionIndex` is within range, and which does not answer a question twice.
+- An `option` answer must be exactly one of that question's labels. Every item of a `multi`
+  `selected` list must be one of its labels (duplicates collapse; an omitted `selected` is
+  the terminal's empty commit). A `custom` answer must be a string or nothing.
+- `question` and `preview` are read from the params, never from the submission, and any
+  unknown field is dropped: a remote client can choose an option, not author text the model
+  will read as the questionnaire's own.
+- `cancelled: true` skips the per-entry checks and ships as authored, mirroring the
+  terminal's Esc. The envelope emits the canonical decline for any cancelled result, so its
+  entries reach only the persisted `details` snapshot.
+
+Nothing throws. A malformed payload from across the network is data, not code, and comes
+back as `ok: false` with a `reason` that names the offending field.
+
+**Where answers are not accepted.** On RPC/ACP hosts (VS Code, Zed, other `ctx.mode ===
+"rpc"` clients) the questionnaire is walked through the host's own native dialogs, one
+question at a time. Those prompts belong to the host, so nothing registers, no `promptId` is
+emitted, and an inbound answer is refused as `no questionnaire is awaiting input`. A bridge
+reading a prompt event without a `promptId` should render it read-only. The one legacy
+exception is an RPC build that predates `ctx.mode`: the prompt event already carries a
+`promptId` by the time the walker takes over, and that id stays unanswerable.
 
 Stability policy for the `rpiv:*` namespace: channel names are immutable, payload changes
 are append-only and always optional, payloads stay JSON-safe, and any breaking change ships
-as a new channel (e.g. `rpiv:ask-user:prompt.v2`) rather than a version field.
+as a new channel (e.g. `rpiv:ask-user:prompt.v2`) rather than a version field. Inbound
+channels follow the same rule: a new field on `AskUserAnswerEventPayload` is something
+listeners must ignore rather than reject, and `reason` strings are diagnostics, not contract
+(never branch on their text; branch on `ok`).
+
