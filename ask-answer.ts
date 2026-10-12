@@ -362,7 +362,16 @@ export function deliverAskAnswer(result: unknown, promptId?: string): AskAnswerO
 	if ("reason" in validated) return reject(validated.reason, target.promptId);
 
 	clearActiveAsk(target);
-	target.done(validated.result);
+	// A throwing `done` means the host's own machinery failed mid-delivery. The
+	// entry is already off the stack, so say so rather than letting the exception
+	// escape into the bus (which would strand the caller without any ack) or
+	// claiming a success the questionnaire never saw.
+	try {
+		target.done(validated.result);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return reject(`the questionnaire could not accept the answer: ${message}`, target.promptId);
+	}
 	return { ok: true, promptId: target.promptId };
 }
 
@@ -386,6 +395,12 @@ export function submitAskUserAnswer(result: AskUserAnswerResult, promptId?: stri
  * The ack echoes `requestId` back to the caller, names the `promptId` the
  * verdict applies to, and carries a `reason` for every rejection, so a remote
  * client gets an answer about its answer instead of silence.
+ *
+ * One registration installs one listener. A process that registered the tool
+ * twice would answer through the first listener and report a miss through the
+ * second, which is the same shape of trouble as registering the tool twice; the
+ * shared stack is what keeps `submitAskUserAnswer` working from either module
+ * instance.
  */
 export function installAskAnswerChannel(events: AskAnswerBus): void {
 	events.on(ASK_USER_ANSWER_EVENT, (data: unknown) => {

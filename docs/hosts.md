@@ -56,6 +56,22 @@ If the host can render neither custom UI nor dialogs, the call returns
 `error: "no_custom_ui"` with text telling the model the user never saw the questions and
 that it should ask them as plain chat text instead — explicitly not a decline.
 
+### Programmatic answers are terminal-only
+
+The `rpiv:ask-user:answer` channel (see the [event
+contract](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/tool-schema.md#event-contract))
+reaches a questionnaire that this package is holding open. On an RPC host it does not: the
+walker hands each prompt to the host's native `select`/`input`, so there is no waiting
+questionnaire here to resolve. Consequently the RPC path registers nothing and its
+`rpiv:ask-user:prompt` event carries no `promptId`, and an answer sent while an RPC
+questionnaire is open comes back `ok: false` with
+`reason: "no questionnaire is awaiting input"`.
+
+A bridge should read a prompt event with no `promptId` as "render this read-only" and let
+the host's own dialogs collect the answer. This is a deliberate gap rather than an
+oversight: answering a dialog this package does not own would mean driving a surface whose
+lifecycle belongs to the host, and the host's dialogs already have their own answer path.
+
 ## Conditional surfaces
 
 Some parts of the dialog exist only under the right conditions:

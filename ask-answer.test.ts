@@ -96,6 +96,21 @@ describe("ask-answer — the active-ask stack", () => {
 		expect(second.done).toHaveBeenCalledTimes(1);
 	});
 
+	it("reports a delivery the host could not accept instead of throwing", () => {
+		registerActiveAsk(PARAMS, "id-boom", () => {
+			throw new Error("editor busy");
+		});
+		const outcome = deliverAskAnswer({ answers: [optionAnswer(0, "React")], cancelled: false });
+		expect(outcome).toEqual({
+			ok: false,
+			promptId: "id-boom",
+			reason: "the questionnaire could not accept the answer: editor busy",
+		});
+		// The entry is off the stack either way: the answer was delivered once, not
+		// left open to be answered twice.
+		expect(activeAskCount()).toBe(0);
+	});
+
 	it("mints a distinct opaque promptId per call", () => {
 		const ids = new Set(Array.from({ length: 20 }, () => newPromptId()));
 		expect(ids.size).toBe(20);

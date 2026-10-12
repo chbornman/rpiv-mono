@@ -7,6 +7,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Programmatic answers. `rpiv:ask-user:answer` resolves a waiting questionnaire without synthesizing keystrokes, for programs that drive Pi from outside the terminal (a phone app bridging Pi, a pane supervisor, a test harness). Every attempt is acknowledged on `rpiv:ask-user:answer-result` with `{ ok, promptId, reason?, requestId? }`, and `submitAskUserAnswer(result, promptId?)` does the same delivery in-process. Answers are validated against the params the targeted questionnaire opened with and rebuilt from them, so the submitted `question` text and option `preview` are never trusted: a remote client can pick an option, not author text the model reads as the questionnaire's own. The RPC dialog walker registers no answer target and advertises no `promptId`, so those host-owned dialogs stay the host's to answer (#180, #207).
+- `promptId`, an opaque per-questionnaire identity, on the `rpiv:ask-user:prompt` payload and on both halves of the `rpiv:ask-user:blocked` bracket. Pi runs tool calls in parallel, so two questionnaires can be open at once and their brackets interleave; the id is what makes an event attributable to one ask, and it is the handle an inbound answer targets. Both fields are append-only and optional; the RPC path omits them.
+
+Keyboard answers, RPC answers, the result envelope, and every existing event field are unchanged.
+
 ## [2.13.5] - 2026-10-12
 
 ## [2.13.4] - 2026-10-11
