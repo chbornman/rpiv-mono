@@ -44,7 +44,7 @@ When the model asks several things at once, `Tab` moves between them and a Submi
 - **Notes on any answer — or on all of them** — `n` opens a multiline note editor on any question tab, and on the Submit tab it opens one global note for the whole questionnaire. Per-question notes reach the model as `user notes: <text>`, the global note as `global note: <text>`; neither marks a question answered.
 - **Keep reading while you answer** — the question opens below the transcript, and `PageUp`/`PageDown` or the mouse wheel keep scrolling the conversation; `Ctrl+]` shrinks the dialog to one line when you want more room, then brings it back with your answers intact.
 - **Works outside the terminal too** — in RPC and ACP hosts such as the VS Code pendant or Zed the questionnaire walks through the host's native dialogs (notes are terminal-only and do not carry over), and in non-interactive runs the tool is removed from the model's tool list instead of failing every call.
-- **Answerable from another program** — every questionnaire publishes a `rpiv:ask-user:prompt` event carrying its own `promptId`, and a `rpiv:ask-user:answer` event closes it. That is how a phone app, a pane supervisor, or a test harness answers a dialog it cannot type into.
+- **Answerable from another program**: every questionnaire publishes a `rpiv:ask-user:prompt` event carrying its own `promptId`, and a `rpiv:ask-user:answer` event closes it. That is how a phone app, a pane supervisor, or a test harness answers a dialog it cannot type into.
 
 ## Configuration
 
@@ -91,7 +91,7 @@ has the full rules.
 
 ## Reference
 
-- [Tool schema](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/tool-schema.md) — parameters, limits, reserved labels, validation errors, the result envelope, and the `rpiv:ask-user:prompt` / `rpiv:ask-user:answer` events.
+- [Tool schema](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/tool-schema.md): parameters, limits, reserved labels, validation errors, the result envelope, and the `rpiv:ask-user:prompt` / `rpiv:ask-user:answer` events.
 - [Keyboard and layout](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/keyboard.md) — every key, the rows the dialog appends, notes, collapse mode, and how previews and overflow adapt to terminal size.
 - [Configuration](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/configuration.md) — file lookup and `XDG_CONFIG_HOME`, the `collapseKey` grammar, the `guidance.*` prompt overrides, and how invalid values are handled.
 - [Hosts and runtime behavior](https://github.com/juicesharp/rpiv-mono/blob/main/packages/rpiv-ask-user-question/docs/hosts.md) — terminal vs RPC vs non-interactive, what degrades in each, and the load-failure envelopes.

@@ -61,7 +61,7 @@ beforeEach(() => {
 	__resetActiveAsks();
 });
 
-describe("ask-answer — the active-ask stack", () => {
+describe("ask-answer: the active-ask stack", () => {
 	it("registers on push and clears by identity", () => {
 		const { ask } = openAsk();
 		expect(activeAskCount()).toBe(1);
@@ -129,7 +129,7 @@ describe("ask-answer — the active-ask stack", () => {
 	});
 });
 
-describe("ask-answer — targeting", () => {
+describe("ask-answer: targeting", () => {
 	it("an answer with no promptId goes to the newest ask", () => {
 		const older = openAsk(PARAMS, "id-old");
 		const newer = openAsk(PARAMS, "id-new");
@@ -189,7 +189,7 @@ describe("ask-answer — targeting", () => {
 	});
 });
 
-describe("ask-answer — validation against the registered params", () => {
+describe("ask-answer: validation against the registered params", () => {
 	function rejectWith(result: unknown, fragment: string, promptId = "id-a") {
 		__resetActiveAsks();
 		const open = openAsk(PARAMS, promptId);
@@ -360,7 +360,7 @@ describe("ask-answer — validation against the registered params", () => {
 	});
 });
 
-describe("ask-answer — submitAskUserAnswer", () => {
+describe("ask-answer: submitAskUserAnswer", () => {
 	it("returns the verdict as a boolean and never throws on garbage", () => {
 		const { done } = openAsk();
 		expect(submitAskUserAnswer({ answers: "nope" } as never)).toBe(false);
@@ -370,7 +370,7 @@ describe("ask-answer — submitAskUserAnswer", () => {
 	});
 });
 
-describe("ask-answer — the answer channel", () => {
+describe("ask-answer: the answer channel", () => {
 	type Handler = (data: unknown) => void;
 
 	function makeBus() {

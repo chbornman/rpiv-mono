@@ -162,7 +162,7 @@ function pick(label: string) {
 	return { answers: [{ questionIndex: 0, kind: "option" as const, answer: label }], cancelled: false };
 }
 
-describe("ask_user_question — the rpiv:ask-user:answer channel", () => {
+describe("ask_user_question: the rpiv:ask-user:answer channel", () => {
 	let bus: ReturnType<typeof makeBus>;
 	let tool: ReturnType<typeof register>;
 
@@ -345,7 +345,7 @@ describe("ask_user_question — the rpiv:ask-user:answer channel", () => {
 	});
 });
 
-describe("ask_user_question — two questionnaires open at once", () => {
+describe("ask_user_question: two questionnaires open at once", () => {
 	// Pi runs tool calls in parallel. With the inline slot held by another
 	// component (as a concurrent questionnaire would), both mounts render as
 	// overlays, so both factories run and both registrations are live at once.
@@ -418,7 +418,7 @@ describe("ask_user_question — two questionnaires open at once", () => {
 	});
 });
 
-describe("ask_user_question — the RPC dialog path registers no answer target", () => {
+describe("ask_user_question: the RPC dialog path registers no answer target", () => {
 	it("sends no promptId and refuses an inbound answer while a native dialog is open", async () => {
 		const bus = makeBus();
 		const tool = register(bus);
